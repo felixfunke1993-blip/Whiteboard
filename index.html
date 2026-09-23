@@ -609,12 +609,19 @@ function renderPreview(){
     '</div>';
   }).join('');
 
+  var counterToggle = '' +
+  '<label style="display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:16px; background:var(--bg-card); cursor:pointer;">' +
+    '<input type="checkbox" id="p_counterEnabled" style="width:20px;height:20px;margin-top:1px;flex:0 0 auto;" '+(w.counterEnabled?'checked':'')+'>' +
+    '<span style="font-size:13.5px; color:var(--chalk-dim); line-height:1.5;"><b style="color:var(--chalk);">Teilmengen-Zähler</b><br>Bei hohen Wiederholungszahlen (z. B. Murph) zwischendurch eintragen, wie viele du schon geschafft hast, statt in einem Tap.</span>' +
+  '</label>';
+
   return '' +
   header('Vorschau','goto:note') +
   '<main>' +
     (w.note ? '<div class="hint" style="margin-bottom:16px;">'+esc(w.note)+'</div>' : '') +
     '<div class="type-select-row">'+chips+'</div>' +
     params +
+    counterToggle +
     '<div id="exList">'+exCards+'</div>' +
     '<button class="add-ex-btn" data-action="addEx">＋ Übung hinzufügen</button>' +
     '<button class="primary-btn" data-action="startTraining">Training starten</button>' +
@@ -624,6 +631,8 @@ function renderPreview(){
 
 function syncPreviewFromDOM(){
   var w = state.workout;
+  var ce = document.getElementById('p_counterEnabled');
+  if(ce) w.counterEnabled = !!ce.checked;
   if(w.type==='emom'){
     var r=document.getElementById('p_rounds'), iv=document.getElementById('p_interval');
     if(r) w.params.rounds = Math.max(1, parseInt(r.value,10)||10);
@@ -653,7 +662,8 @@ function syncPreviewFromDOM(){
 /* ---------- Training screen ---------- */
 function startTraining(){
   var w = state.workout;
-  training = { elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false };
+  training = { elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
+  resetRemaining();
 
   if(w.type==='emom'){ training.remaining = w.params.intervalSec; }
   else if(w.type==='amrap'){ training.remaining = w.params.timeCapSec; }
@@ -666,6 +676,13 @@ function startTraining(){
   if(w.type==='emom' || w.type==='amrap' || w.type==='tabata' || w.type==='fortime'){
     timerInterval = setInterval(tick, 1000);
   }
+}
+
+function resetRemaining(){
+  var w = state.workout;
+  if(!w || !w.counterEnabled || (w.type!=='classic' && w.type!=='fortime')){ training.remainingValue = null; return; }
+  var ex = w.exercises[training.currentExerciseIndex];
+  training.remainingValue = (ex && ex.value!=null && (ex.unitType==='reps' || ex.unitType==='distance')) ? ex.value : null;
 }
 
 function tick(){
@@ -758,17 +775,29 @@ function renderTraining(){
     if(w.type==='classic' || w.type==='fortime'){
       stats += '<div class="cur-stat"><div class="val">'+training.currentSet+'/'+ex.sets+'</div><div class="lbl">Satz</div></div>';
     }
+    var showCounter = (w.counterEnabled && (w.type==='classic'||w.type==='fortime') && training.remainingValue!=null);
     if(ex.value!=null){
-      stats += '<div class="cur-stat"><div class="val">'+ex.value+(ex.unitType==='distance'?'m':ex.unitType==='time'?'s':'')+'</div><div class="lbl">'+(UNIT_LABELS[ex.unitType]||'')+'</div></div>';
+      var dispVal = showCounter ? training.remainingValue : ex.value;
+      var sub = (showCounter && dispVal!==ex.value) ? ' · von '+ex.value : '';
+      stats += '<div class="cur-stat"><div class="val">'+dispVal+(ex.unitType==='distance'?'m':ex.unitType==='time'?'s':'')+'</div><div class="lbl">'+(UNIT_LABELS[ex.unitType]||'')+sub+'</div></div>';
     }
     if(ex.weight!=null){
       stats += '<div class="cur-stat"><div class="val">'+ex.weight+'</div><div class="lbl">kg</div></div>';
+    }
+    var counterBlock = '';
+    if(showCounter){
+      counterBlock = '' +
+      '<div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--line); display:flex; gap:8px; align-items:center; justify-content:center;">' +
+        '<input type="number" min="1" id="partialInput" placeholder="Anzahl" style="width:110px; padding:10px; text-align:center; font-size:16px;">' +
+        '<button class="ghost-btn" style="color:var(--green); border-color:var(--green);" data-action="subtractReps">－ abziehen</button>' +
+      '</div>';
     }
     curBlock = '' +
     '<div class="current-card">' +
       '<div class="cur-label">Aktuelle Übung</div>' +
       '<div class="cur-name">'+esc(ex.name)+'</div>' +
       '<div class="cur-stats">'+stats+'</div>' +
+      counterBlock +
     '</div>';
   }
 
@@ -814,6 +843,21 @@ function renderTraining(){
 }
 
 /* Classic / For Time / AMRAP exercise stepping */
+function advanceSetOrExercise(){
+  var w = state.workout;
+  var ex = w.exercises[training.currentExerciseIndex];
+  training.currentSet++;
+  if(training.currentSet > ex.sets){
+    training.currentExerciseIndex++;
+    training.currentSet = 1;
+    if(training.currentExerciseIndex >= w.exercises.length){
+      finishWorkout();
+      return;
+    }
+  }
+  resetRemaining();
+  render();
+}
 function setDone(){
   var w = state.workout;
   if(w.type==='amrap'){
@@ -826,17 +870,7 @@ function setDone(){
     return;
   }
   // classic / fortime
-  var ex = w.exercises[training.currentExerciseIndex];
-  training.currentSet++;
-  if(training.currentSet > ex.sets){
-    training.currentExerciseIndex++;
-    training.currentSet = 1;
-    if(training.currentExerciseIndex >= w.exercises.length){
-      finishWorkout();
-      return;
-    }
-  }
-  render();
+  advanceSetOrExercise();
 }
 function setBack(){
   var w = state.workout;
@@ -858,6 +892,7 @@ function setBack(){
       training.currentSet = 1;
     }
   }
+  resetRemaining();
   render();
 }
 function roundSkip(){
@@ -885,6 +920,21 @@ function roundBack(){
     else if(training.round>1){ training.round--; training.phase='rest'; training.remaining=w.params.rest; }
   }
   render();
+}
+
+function subtractReps(){
+  var input = document.getElementById('partialInput');
+  var amt = input ? parseInt(input.value,10) : NaN;
+  if(!amt || amt<=0) return;
+  if(training.remainingValue==null) return;
+  training.remainingValue = Math.max(0, training.remainingValue - amt);
+  if(training.remainingValue<=0){
+    advanceSetOrExercise();
+  } else {
+    render();
+    var inp2 = document.getElementById('partialInput');
+    if(inp2){ inp2.value=''; inp2.focus(); }
+  }
 }
 
 function finishWorkout(){
@@ -1032,6 +1082,7 @@ app.addEventListener('click', function(e){
   else if(action==='setBack') setBack();
   else if(action==='roundSkip') roundSkip();
   else if(action==='roundBack') roundBack();
+  else if(action==='subtractReps') subtractReps();
   else if(action==='cancelTraining') cancelTraining();
   else if(action==='finishManually') finishManually();
   else if(action==='restartArchive'){
