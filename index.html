@@ -317,8 +317,118 @@ function deleteArchiveEntry(id){
   }catch(e){}
 }
 
+/* ---------- Bekannte Workouts (Benchmark-/Hero-WODs) ---------- */
+var WOD_DATABASE = {
+  murph: {
+    type:'fortime', params:{},
+    exercises:[
+      {name:'Lauf', sets:1, value:1609, unitType:'distance', weight:null},
+      {name:'Klimmzüge', sets:1, value:100, unitType:'reps', weight:null},
+      {name:'Liegestütze', sets:1, value:200, unitType:'reps', weight:null},
+      {name:'Kniebeugen', sets:1, value:300, unitType:'reps', weight:null},
+      {name:'Lauf', sets:1, value:1609, unitType:'distance', weight:null}
+    ],
+    note:'Murph (Hero WOD). Original wird oft in 20 Runden à 5 Klimmzüge/10 Liegestütze/15 Kniebeugen partitioniert – hier als Gesamtmenge hinterlegt, bei Bedarf anpassen. Optional mit Weste (9/6,5 kg).'
+  },
+  cindy: {
+    type:'amrap', params:{minutes:20, timeCapSec:1200},
+    exercises:[
+      {name:'Klimmzüge', sets:1, value:5, unitType:'reps', weight:null},
+      {name:'Liegestütze', sets:1, value:10, unitType:'reps', weight:null},
+      {name:'Kniebeugen', sets:1, value:15, unitType:'reps', weight:null}
+    ]
+  },
+  mary: {
+    type:'amrap', params:{minutes:20, timeCapSec:1200},
+    exercises:[
+      {name:'Handstand-Liegestütze', sets:1, value:5, unitType:'reps', weight:null},
+      {name:'Pistolen (einbeinige Kniebeugen)', sets:1, value:10, unitType:'reps', weight:null},
+      {name:'Klimmzüge', sets:1, value:15, unitType:'reps', weight:null}
+    ]
+  },
+  angie: {
+    type:'fortime', params:{},
+    exercises:[
+      {name:'Klimmzüge', sets:1, value:100, unitType:'reps', weight:null},
+      {name:'Liegestütze', sets:1, value:100, unitType:'reps', weight:null},
+      {name:'Sit-ups', sets:1, value:100, unitType:'reps', weight:null},
+      {name:'Kniebeugen', sets:1, value:100, unitType:'reps', weight:null}
+    ]
+  },
+  grace: {
+    type:'fortime', params:{},
+    exercises:[{name:'Clean & Jerks', sets:1, value:30, unitType:'reps', weight:null}],
+    note:'Grace. Rx-Gewicht üblich 61/43 kg – Gewicht in der Vorschau ergänzen.'
+  },
+  isabel: {
+    type:'fortime', params:{},
+    exercises:[{name:'Snatches', sets:1, value:30, unitType:'reps', weight:null}],
+    note:'Isabel. Rx-Gewicht üblich 61/43 kg – Gewicht in der Vorschau ergänzen.'
+  },
+  karen: {
+    type:'fortime', params:{},
+    exercises:[{name:'Wall Balls', sets:1, value:150, unitType:'reps', weight:null}],
+    note:'Karen. Üblicher Ballgewicht 9/6 kg auf 3/2,7 m Ziel – bei Bedarf ergänzen.'
+  },
+  jackie: {
+    type:'fortime', params:{},
+    exercises:[
+      {name:'Rudern', sets:1, value:1000, unitType:'distance', weight:null},
+      {name:'Thrusters', sets:1, value:50, unitType:'reps', weight:null},
+      {name:'Klimmzüge', sets:1, value:30, unitType:'reps', weight:null}
+    ],
+    note:'Jackie. Rx-Gewicht Thrusters üblich 20/15 kg – bei Bedarf ergänzen.'
+  },
+  helen: {
+    type:'classic', params:{},
+    exercises:[
+      {name:'Lauf', sets:3, value:400, unitType:'distance', weight:null},
+      {name:'Kettlebell Swings', sets:3, value:21, unitType:'reps', weight:null},
+      {name:'Klimmzüge', sets:3, value:12, unitType:'reps', weight:null}
+    ],
+    note:'Helen – 3 Runden. Reihenfolge eigentlich abwechselnd pro Runde (Lauf → Swings → Klimmzüge), hier je Übung gebündelt. Rx-KB üblich 24/16 kg.'
+  },
+  barbara: {
+    type:'classic', params:{},
+    exercises:[
+      {name:'Klimmzüge', sets:5, value:20, unitType:'reps', weight:null},
+      {name:'Liegestütze', sets:5, value:30, unitType:'reps', weight:null},
+      {name:'Sit-ups', sets:5, value:40, unitType:'reps', weight:null},
+      {name:'Kniebeugen', sets:5, value:50, unitType:'reps', weight:null}
+    ],
+    note:'Barbara – 5 Runden, original mit 3 Min. Pause zwischen den Runden (hier nicht automatisiert).'
+  },
+  nancy: {
+    type:'classic', params:{},
+    exercises:[
+      {name:'Lauf', sets:5, value:400, unitType:'distance', weight:null},
+      {name:'Overhead Squats', sets:5, value:15, unitType:'reps', weight:null}
+    ],
+    note:'Nancy – 5 Runden. Rx-Gewicht OHS üblich 43/29 kg – bei Bedarf ergänzen.'
+  },
+  dt: {
+    type:'classic', params:{},
+    exercises:[
+      {name:'Deadlifts', sets:5, value:12, unitType:'reps', weight:null},
+      {name:'Hang Power Cleans', sets:5, value:9, unitType:'reps', weight:null},
+      {name:'Push Jerks', sets:5, value:6, unitType:'reps', weight:null}
+    ],
+    note:'DT – 5 Runden. Rx-Gewicht üblich 70/47,5 kg – bei Bedarf ergänzen.'
+  }
+};
+var WOD_QUICKLIST = ['Murph','Cindy','Mary','Angie','Grace','Isabel','Karen','Jackie','Helen','Barbara','Nancy','DT'];
+
+function lookupNamedWorkout(raw){
+  var key = raw.trim().toLowerCase().replace(/[^a-z]/g,'');
+  if(WOD_DATABASE.hasOwnProperty(key)) return JSON.parse(JSON.stringify(WOD_DATABASE[key]));
+  return null;
+}
+
 /* ---------- Parser ---------- */
 function parseWorkout(raw){
+  var named = lookupNamedWorkout(raw);
+  if(named) return named;
+
   var lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; });
   if(lines.length===0) return null;
 
@@ -427,10 +537,15 @@ function header(title, backAction){
 /* ---------- Note screen ---------- */
 function renderNote(){
   var err = state.parseError ? '<div class="error-box">Konnte kein Workout erkennen. Bitte prüfe die Eingabe – siehe Beispiele unten.</div>' : '';
+  var quickChips = WOD_QUICKLIST.map(function(name){
+    return '<button class="type-chip" data-action="loadNamed" data-name="'+esc(name)+'">'+esc(name)+'</button>';
+  }).join('');
   return '' +
   '<div class="topbar"><div class="brand"><span class="chalk-dot"></span><h1>Whiteboard</h1></div></div>' +
   '<main class="note-wrap">' +
-    '<textarea id="noteInput" placeholder="z. B.\n\nEMOM25\nKettlebell Swings 15\nBurpees 10\n\noder klassisch:\nKniebeugen 4x10 60kg\nLiegestütze 3x15">'+esc(state.raw)+'</textarea>' +
+    '<div class="overview-title" style="margin-bottom:8px;">Bekannte Workouts</div>' +
+    '<div class="type-select-row" style="margin-bottom:14px;">'+quickChips+'</div>' +
+    '<textarea id="noteInput" placeholder="z. B.\n\nEMOM25\nKettlebell Swings 15\nBurpees 10\n\noder klassisch:\nKniebeugen 4x10 60kg\nLiegestütze 3x15\n\noder einfach einen bekannten Namen wie Murph, Cindy, Fran ...">'+esc(state.raw)+'</textarea>' +
     err +
     '<button class="primary-btn" data-action="parse">Workout erstellen</button>' +
     '<details class="hint"><summary>Beispiele &amp; Formate</summary>' +
@@ -440,7 +555,8 @@ function renderNote(){
       '<code>TABATA</code> – 8 Runden 20s/10s (auch <code>TABATA10/30/15</code>)<br>' +
       '<code>FOR TIME</code> – auf Zeit, ohne Countdown<br>' +
       'Keine Typ-Zeile = klassisches Training ohne Timer.<br><br>' +
-      'Pro Übungszeile: Name + optional <code>3x10</code>, <code>40kg</code>, <code>Sätze</code>, <code>Wiederholungen</code>, <code>m</code> oder <code>sek</code>.' +
+      'Pro Übungszeile: Name + optional <code>3x10</code>, <code>40kg</code>, <code>Sätze</code>, <code>Wiederholungen</code>, <code>m</code> oder <code>sek</code>, Zahl vor oder nach dem Namen.<br><br>' +
+      'Nur ein bekannter Name im Feld (z. B. <code>Cindy</code>) lädt automatisch das komplette Workout.' +
       '<pre>EMOM25\nKettlebell Swings 15\nBurpees 10\n\nKniebeugen 4x10 60kg\nLiegestütze 3 Sätze 15 Wiederholungen\nKlimmzüge 3x8\nRudern 500m</pre>' +
     '</details>' +
   '</main>';
@@ -496,6 +612,7 @@ function renderPreview(){
   return '' +
   header('Vorschau','goto:note') +
   '<main>' +
+    (w.note ? '<div class="hint" style="margin-bottom:16px;">'+esc(w.note)+'</div>' : '') +
     '<div class="type-select-row">'+chips+'</div>' +
     params +
     '<div id="exList">'+exCards+'</div>' +
@@ -860,7 +977,18 @@ app.addEventListener('click', function(e){
   if(!t) return;
   var action = t.getAttribute('data-action');
 
-  if(action==='parse'){
+  if(action==='loadNamed'){
+    var wname = t.getAttribute('data-name');
+    var named = lookupNamedWorkout(wname);
+    if(named){
+      state.parseError = false;
+      state.raw = wname;
+      state.workout = named;
+      state.screen = 'preview';
+      render();
+    }
+  }
+  else if(action==='parse'){
     syncNoteInput();
     var parsed = parseWorkout(state.raw);
     if(!parsed){ state.parseError = true; render(); return; }
