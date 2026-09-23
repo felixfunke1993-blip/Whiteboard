@@ -271,15 +271,16 @@ function esc(str){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
 }
-function beep(freq, dur){
+function beep(freq, dur, vol){
   try{
     var Ctx = window.AudioContext || window.webkitAudioContext;
     var ctx = new Ctx();
-    var o = ctx.createOscillator(), g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type='sine'; o.frequency.value = freq || 880;
+    var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.connect(f); f.connect(g); g.connect(ctx.destination);
+    o.type='sine'; o.frequency.value = freq || 440;
+    f.type='lowpass'; f.frequency.value = (freq||440)*1.4; f.Q.value = 0.7;
     g.gain.setValueAtTime(0.001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime+0.02);
+    g.gain.exponentialRampToValueAtTime(vol||0.35, ctx.currentTime+0.04);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (dur||150)/1000);
     o.start();
     o.stop(ctx.currentTime + (dur||150)/1000 + 0.05);
@@ -287,6 +288,11 @@ function beep(freq, dur){
   }catch(e){}
 }
 function vib(pattern){ try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
+function countdownBeep(){ beep(392,180); vib(60); }
+function transitionBeep(){
+  beep(392,650,0.55);
+  vib([180,80,180]);
+}
 function requestWake(){
   try{
     if(navigator.wakeLock){
@@ -693,28 +699,32 @@ function tick(){
 
   if(w.type==='emom'){
     training.remaining--;
+    if(training.remaining>0 && training.remaining<=3){ countdownBeep(); }
     if(training.remaining<=0){
       training.currentRound++;
-      beep(880,150); vib(200);
+      transitionBeep();
       if(training.currentRound > w.params.rounds){ finishWorkout(); return; }
       training.remaining = w.params.intervalSec;
       boundary = true;
     }
   } else if(w.type==='tabata'){
     training.remaining--;
+    if(training.remaining>0 && training.remaining<=3){ countdownBeep(); }
     if(training.remaining<=0){
       if(training.phase==='work'){
-        training.phase='rest'; training.remaining=w.params.rest; beep(660,120); vib(120);
+        training.phase='rest'; training.remaining=w.params.rest;
       } else {
         training.phase='work'; training.round++;
-        if(training.round > w.params.rounds){ finishWorkout(); return; }
-        training.remaining=w.params.work; beep(880,180); vib([100,50,100]);
+        if(training.round > w.params.rounds){ transitionBeep(); finishWorkout(); return; }
+        training.remaining=w.params.work;
       }
+      transitionBeep();
       boundary = true;
     }
   } else if(w.type==='amrap'){
     training.remaining--;
-    if(training.remaining<=0){ beep(440,450); vib([200,100,200]); finishWorkout(); return; }
+    if(training.remaining>0 && training.remaining<=3){ countdownBeep(); }
+    if(training.remaining<=0){ transitionBeep(); finishWorkout(); return; }
   }
   // fortime: just counts up, no boundary
 
@@ -838,7 +848,14 @@ function renderTraining(){
   }
 
   return '' +
-  '<div class="train-header"><span class="train-type-badge">'+typeLabel+'</span><div style="display:flex;gap:8px;"><button class="ghost-btn" data-action="cancelTraining">✕ Abbrechen</button><button class="ghost-btn" style="color:var(--green);border-color:var(--green);" data-action="finishManually">✓ Erledigt</button></div></div>' +
+  '<div class="train-header" style="flex-direction:column;align-items:stretch;gap:10px;">' +
+    '<span class="train-type-badge" style="text-align:center;">'+typeLabel+'</span>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<button class="ghost-btn" style="flex:1;padding:10px 6px;font-size:12.5px;" data-action="cancelTraining">✕ Abbrechen</button>' +
+      '<button class="ghost-btn" style="flex:1;padding:10px 6px;font-size:12.5px;color:var(--blue);border-color:var(--blue);" data-action="restartFresh">↺ Neustart</button>' +
+      '<button class="ghost-btn" style="flex:1;padding:10px 6px;font-size:12.5px;color:var(--green);border-color:var(--green);" data-action="finishManually">✓ Erledigt</button>' +
+    '</div>' +
+  '</div>' +
   timerBlock + amrapRound + curBlock + buttons + overview;
 }
 
@@ -973,6 +990,18 @@ function cancelTraining(){
   render();
 }
 
+function restartFresh(){
+  if(!confirm('Workout neu starten? Der Fortschritt geht verloren und der Notizzettel wird geleert.')) return;
+  if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
+  releaseWake();
+  training = null;
+  state.raw = '';
+  state.parseError = false;
+  state.workout = null;
+  state.screen = 'note';
+  render();
+}
+
 function finishManually(){
   if(!confirm('Training jetzt beenden und im Archiv speichern?')) return;
   finishWorkout();
@@ -1084,6 +1113,7 @@ app.addEventListener('click', function(e){
   else if(action==='roundBack') roundBack();
   else if(action==='subtractReps') subtractReps();
   else if(action==='cancelTraining') cancelTraining();
+  else if(action==='restartFresh') restartFresh();
   else if(action==='finishManually') finishManually();
   else if(action==='restartArchive'){
     var id = parseInt(t.getAttribute('data-id'),10);
