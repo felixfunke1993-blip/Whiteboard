@@ -690,7 +690,7 @@ function renderTraining(){
   }
 
   return '' +
-  '<div class="train-header"><span class="train-type-badge">'+typeLabel+'</span><button class="ghost-btn" data-action="cancelTraining">✕ Abbrechen</button></div>' +
+  '<div class="train-header"><span class="train-type-badge">'+typeLabel+'</span><div style="display:flex;gap:8px;"><button class="ghost-btn" data-action="cancelTraining">✕ Abbrechen</button><button class="ghost-btn" style="color:var(--green);border-color:var(--green);" data-action="finishManually">✓ Erledigt</button></div></div>' +
   timerBlock + amrapRound + curBlock + buttons + overview;
 }
 
@@ -804,6 +804,11 @@ function cancelTraining(){
   render();
 }
 
+function finishManually(){
+  if(!confirm('Training jetzt beenden und im Archiv speichern?')) return;
+  finishWorkout();
+}
+
 /* ---------- Summary screen ---------- */
 function renderSummary(){
   return '' +
@@ -898,6 +903,7 @@ app.addEventListener('click', function(e){
   else if(action==='roundSkip') roundSkip();
   else if(action==='roundBack') roundBack();
   else if(action==='cancelTraining') cancelTraining();
+  else if(action==='finishManually') finishManually();
   else if(action==='restartArchive'){
     var id = parseInt(t.getAttribute('data-id'),10);
     var entry = loadArchive().filter(function(e){ return e.id===id; })[0];
