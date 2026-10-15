@@ -284,21 +284,62 @@ function esc(str){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
 }
+var audioCtx = null, silentEl = null, silentStopTimer = null;
+function getAudioCtx(){
+  if(!audioCtx){
+    var C = window.AudioContext || window.webkitAudioContext;
+    if(C) audioCtx = new C();
+  }
+  return audioCtx;
+}
+/* iOS/Safari: Audio muss durch eine Berührung freigeschaltet werden und soll auch im Stumm-Modus hörbar sein */
+function unlockAudio(){
+  try{ if(navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}
+  try{
+    var ctx = getAudioCtx();
+    if(ctx){
+      if(ctx.state !== 'running') ctx.resume();
+      var buf = ctx.createBuffer(1, 1, 22050), src = ctx.createBufferSource();
+      src.buffer = buf; src.connect(ctx.destination); src.start(0);
+    }
+  }catch(e){}
+}
+function startSilentAudio(){
+  try{
+    if(silentStopTimer){ clearTimeout(silentStopTimer); silentStopTimer = null; }
+    if(!silentEl){
+      silentEl = new Audio('data:audio/wav;base64,UklGRvQHAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YdAHAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==');
+      silentEl.loop = true;
+    }
+    var pr = silentEl.play();
+    if(pr && pr.catch) pr.catch(function(){});
+  }catch(e){}
+}
+function stopSilentAudio(){
+  if(silentStopTimer) clearTimeout(silentStopTimer);
+  silentStopTimer = setTimeout(function(){
+    try{ if(silentEl) silentEl.pause(); }catch(e){}
+    silentStopTimer = null;
+  }, 1800);
+}
 function beep(freq, dur, vol){
   try{
-    var Ctx = window.AudioContext || window.webkitAudioContext;
-    var ctx = new Ctx();
-    var o = ctx.createOscillator(), g = ctx.createGain();
-    var t = ctx.currentTime, d = (dur||110)/1000, v = vol||0.8;
-    o.connect(g); g.connect(ctx.destination);
-    o.type = 'sine'; o.frequency.value = freq || 440;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(v, t+0.003);
-    g.gain.setValueAtTime(v, t+d-0.005);
-    g.gain.linearRampToValueAtTime(0, t+d);
-    o.start(t);
-    o.stop(t+d+0.02);
-    setTimeout(function(){ try{ctx.close();}catch(e){} }, (dur||110)+300);
+    var ctx = getAudioCtx();
+    if(!ctx) return;
+    var play = function(){
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      var t = ctx.currentTime, d = (dur||110)/1000, v = vol||0.8;
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sine'; o.frequency.value = freq || 440;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(v, t+0.003);
+      g.gain.setValueAtTime(v, t+d-0.005);
+      g.gain.linearRampToValueAtTime(0, t+d);
+      o.start(t);
+      o.stop(t+d+0.02);
+    };
+    if(ctx.state !== 'running'){ ctx.resume().then(play).catch(function(){}); }
+    else play();
   }catch(e){}
 }
 function vib(pattern){ try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
@@ -313,6 +354,7 @@ function requestWake(){
   }catch(e){}
 }
 function releaseWake(){
+  stopSilentAudio();
   try{ if(wakeLock){ wakeLock.release(); wakeLock=null; } }catch(e){}
 }
 
@@ -772,6 +814,7 @@ function isCountUp(w){
 function startTraining(){
   var w = state.workout;
   state.imageOverlay = false;
+  startSilentAudio();
   training = { elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
   resetRemaining();
 
@@ -1250,6 +1293,7 @@ function renderArchive(){
 
 /* ---------- Event delegation ---------- */
 app.addEventListener('click', function(e){
+  unlockAudio();
   var t = e.target.closest('[data-action]');
   if(!t) return;
   var action = t.getAttribute('data-action');
