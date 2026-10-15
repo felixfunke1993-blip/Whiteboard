@@ -351,16 +351,31 @@ function clearTones(){
 }
 function countdownBeep(){ playTone('tick'); vib(60); }
 function transitionBeep(){ playTone('long'); vib([180,80,180]); }
+var wakePending = false;
 function requestWake(){
   try{
-    if(navigator.wakeLock){
-      navigator.wakeLock.request('screen').then(function(wl){ wakeLock = wl; }).catch(function(){});
-    }
-  }catch(e){}
+    if(!navigator.wakeLock) return;
+    if(wakePending || (wakeLock && !wakeLock.released)) return;
+    wakePending = true;
+    navigator.wakeLock.request('screen').then(function(wl){
+      wakePending = false;
+      if(!training){ try{ wl.release(); }catch(e){} return; }   // Training inzwischen beendet
+      wakeLock = wl;
+      wl.addEventListener('release', function(){ if(wakeLock === wl) wakeLock = null; });
+    }).catch(function(){ wakePending = false; });
+  }catch(e){ wakePending = false; }
 }
 function releaseWake(){
   try{ if(wakeLock){ wakeLock.release(); wakeLock=null; } }catch(e){}
 }
+/* Der Browser gibt die Displaysperre frei, sobald die App in den Hintergrund wechselt (z. B. Spotify).
+   Beim Zurückkehren wird sie erneut angefordert. */
+function reacquireWake(){
+  if(training && state.screen==='training' && document.visibilityState==='visible') requestWake();
+}
+document.addEventListener('visibilitychange', reacquireWake);
+window.addEventListener('pageshow', reacquireWake);
+window.addEventListener('focus', reacquireWake);
 
 /* ---------- Archive (localStorage) ---------- */
 var ARCHIVE_KEY = 'whiteboard_archive_v1';
