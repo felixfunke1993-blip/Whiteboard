@@ -240,6 +240,15 @@
   .empty-state{text-align:center; padding:60px 20px; color:var(--chalk-faint);}
   .empty-state .emoji{font-size:38px; margin-bottom:12px;}
 
+  .img-row{display:flex; gap:10px; align-items:center; margin-top:14px; padding:10px; border:1px solid var(--line); border-radius:var(--radius); background:var(--bg-card);}
+  .img-row img{width:64px; height:64px; object-fit:cover; border-radius:8px; flex:0 0 auto; border:1px solid var(--line);}
+  .img-row .img-actions{display:flex; flex-direction:column; gap:8px; flex:1;}
+  .ocr-status{margin-top:10px; font-size:13.5px; color:var(--blue);}
+  .img-overlay{position:fixed; inset:0; z-index:50; background:var(--bg); display:flex; flex-direction:column; padding-top:var(--safe-t); padding-bottom:var(--safe-b);}
+  .img-bar{display:flex; gap:10px; padding:12px 16px; border-bottom:1px solid var(--line);}
+  .img-bar button{flex:1;}
+  .img-scroll{flex:1; overflow:auto; -webkit-overflow-scrolling:touch; padding:10px;}
+  .img-scroll img{display:block; max-width:none; height:auto;}
   .cancel-link{display:block; text-align:center; margin-top:14px; color:var(--chalk-faint); font-size:13px; background:none; border:none; text-decoration:underline;}
 </style>
 </head>
@@ -552,6 +561,18 @@ function header(title, backAction){
 /* ---------- Note screen ---------- */
 function renderNote(){
   var err = state.parseError ? '<div class="error-box">Konnte kein Workout erkennen. Bitte prüfe die Eingabe – siehe Beispiele unten.</div>' : '';
+  var imageBlock = '<input type="file" id="imgInput" accept="image/*" style="display:none;">';
+  if(state.refImage){
+    imageBlock += '<div class="img-row"><img src="'+state.refImage+'" alt="Trainingsanleitung"><div class="img-actions">' +
+      '<button class="secondary-btn" style="padding:10px;" data-action="runOcr"'+(state.ocrBusy?' disabled':'')+'>Text aus Bild erkennen</button>' +
+      '<button class="ghost-btn" data-action="removeImage"'+(state.ocrBusy?' disabled':'')+'>Bild entfernen</button>' +
+    '</div></div>';
+    if(state.ocrBusy) imageBlock += '<div class="ocr-status" id="ocrStatus">Erkennung wird geladen …</div>';
+    else imageBlock += '<div class="hint" style="margin-top:10px;">Das Bild bleibt im Training als Anleitung abrufbar. Erkannten Text bitte prüfen und ggf. eine Typ-Zeile (z. B. EMOM12, ZIRKEL 4) ergänzen.</div>';
+  } else {
+    imageBlock += '<label for="imgInput" class="secondary-btn" style="display:block; text-align:center; margin-top:14px; cursor:pointer;">📷 Bild / Screenshot hochladen</label>';
+  }
+  if(state.ocrError) imageBlock += '<div class="error-box">'+esc(state.ocrError)+'</div>';
   var quickChips = WOD_QUICKLIST.map(function(name){
     return '<button class="type-chip" data-action="loadNamed" data-name="'+esc(name)+'">'+esc(name)+'</button>';
   }).join('');
@@ -561,6 +582,7 @@ function renderNote(){
     '<div class="overview-title" style="margin-bottom:8px;">Bekannte Workouts</div>' +
     '<div class="type-select-row" style="margin-bottom:14px;">'+quickChips+'</div>' +
     '<textarea id="noteInput" placeholder="z. B.\n\nEMOM25\nKettlebell Swings 15\nBurpees 10\n\noder klassisch:\nKniebeugen 4x10 60kg\nLiegestütze 3x15\n\noder einfach einen bekannten Namen wie Murph, Cindy, Fran ...">'+esc(state.raw)+'</textarea>' +
+    imageBlock +
     err +
     '<button class="primary-btn" data-action="parse">Workout erstellen</button>' +
     '<details class="hint"><summary>Beispiele &amp; Formate</summary>' +
@@ -700,6 +722,7 @@ function isCountUp(w){
 }
 function startTraining(){
   var w = state.workout;
+  state.imageOverlay = false;
   training = { elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
   resetRemaining();
 
@@ -937,6 +960,8 @@ function renderTraining(){
     overview = '<div class="overview"><div class="overview-title">'+(w.type==='circuit' ? 'Runde '+training.round+' / '+w.params.rounds : 'Gesamtübersicht')+'</div><div class="ov-list">'+items+'</div></div>';
   }
 
+  var imgBtn = state.refImage ? '<div style="padding:4px 20px 0;"><button class="ghost-btn" style="width:100%;padding:12px;" data-action="showImage">📷 Anleitung anzeigen</button></div>' : '';
+  var imgOverlay = (state.refImage && state.imageOverlay) ? '<div class="img-overlay"><div class="img-bar"><button class="ghost-btn" data-action="zoomImage">🔍 '+(state.imageZoom?'Verkleinern':'Vergrößern')+'</button><button class="ghost-btn" data-action="hideImage">✕ Schließen</button></div><div class="img-scroll"><img src="'+state.refImage+'" style="width:'+(state.imageZoom?'220%':'100%')+';" alt="Anleitung"></div></div>' : '';
   return '' +
   '<div class="train-header" style="flex-direction:column;align-items:stretch;gap:10px;">' +
     '<span class="train-type-badge" style="text-align:center;">'+typeLabel+'</span>' +
@@ -946,7 +971,7 @@ function renderTraining(){
       '<button class="ghost-btn" style="flex:1;padding:10px 6px;font-size:12.5px;color:var(--green);border-color:var(--green);" data-action="finishManually">✓ Erledigt</button>' +
     '</div>' +
   '</div>' +
-  timerBlock + amrapRound + circuitRound + curBlock + renderNext() + buttons + overview;
+  timerBlock + amrapRound + circuitRound + curBlock + renderNext() + buttons + imgBtn + overview + imgOverlay;
 }
 
 /* Classic / For Time / AMRAP exercise stepping */
@@ -1089,6 +1114,7 @@ function finishWorkout(){
 
   var entry = { id: Date.now(), date: new Date().toISOString(), workout: JSON.parse(JSON.stringify(w)), result: resultText };
   saveArchiveEntry(entry);
+  state.refImage = null; state.imageOverlay = false;
   state.lastResult = resultText;
   state.screen = 'summary';
   training = null;
@@ -1111,6 +1137,8 @@ function restartFresh(){
   training = null;
   state.raw = '';
   state.parseError = false;
+  state.refImage = null;
+  state.imageOverlay = false;
   state.workout = null;
   state.screen = 'note';
   render();
@@ -1227,6 +1255,11 @@ app.addEventListener('click', function(e){
   else if(action==='roundSkip') roundSkip();
   else if(action==='roundBack') roundBack();
   else if(action==='subtractReps') subtractReps();
+  else if(action==='runOcr') runOcr();
+  else if(action==='removeImage'){ syncNoteInput(); state.refImage = null; state.ocrError = ''; render(); }
+  else if(action==='showImage'){ state.imageOverlay = true; state.imageZoom = false; render(); }
+  else if(action==='hideImage'){ state.imageOverlay = false; render(); }
+  else if(action==='zoomImage'){ state.imageZoom = !state.imageZoom; render(); }
   else if(action==='cancelTraining') cancelTraining();
   else if(action==='restartFresh') restartFresh();
   else if(action==='finishManually') finishManually();
@@ -1242,6 +1275,67 @@ app.addEventListener('click', function(e){
   else if(action==='deleteArchive'){
     var did = parseInt(t.getAttribute('data-id'),10);
     if(confirm('Diesen Archiv-Eintrag löschen?')){ deleteArchiveEntry(did); render(); }
+  }
+});
+
+function handleImageFile(file){
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var img = new Image();
+    img.onload = function(){
+      var max = 2200, sc = Math.min(1, max/Math.max(img.width, img.height));
+      var c = document.createElement('canvas');
+      c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      syncNoteInput();
+      state.refImage = c.toDataURL('image/jpeg', 0.85);
+      state.ocrError = '';
+      render();
+    };
+    img.onerror = function(){ syncNoteInput(); state.ocrError = 'Bild konnte nicht gelesen werden.'; render(); };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadTesseract(){
+  return new Promise(function(resolve, reject){
+    if(window.Tesseract) return resolve();
+    var sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    sc.onload = resolve; sc.onerror = reject;
+    document.head.appendChild(sc);
+  });
+}
+
+function runOcr(){
+  if(!state.refImage || state.ocrBusy) return;
+  syncNoteInput();
+  if(state.raw.trim() && !confirm('Der vorhandene Text im Notizzettel wird durch den erkannten Text ersetzt. Fortfahren?')) return;
+  state.ocrBusy = true; state.ocrError = ''; render();
+  loadTesseract().then(function(){
+    return Tesseract.recognize(state.refImage, 'deu+eng', { logger: function(m){
+      var el = document.getElementById('ocrStatus');
+      if(el) el.textContent = (m.status==='recognizing text') ? 'Text wird erkannt … '+Math.round((m.progress||0)*100)+' %' : 'Erkennung wird geladen …';
+    }});
+  }).then(function(res){
+    var text = (res.data.text || '').split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; }).join('\n');
+    state.ocrBusy = false;
+    if(!text){ state.ocrError = 'Es wurde kein Text erkannt.'; }
+    else { state.raw = text; state.parseError = false; }
+    render();
+  }).catch(function(){
+    state.ocrBusy = false;
+    state.ocrError = 'Texterkennung fehlgeschlagen (Internetverbindung nötig).';
+    render();
+  });
+}
+
+app.addEventListener('change', function(e){
+  if(e.target && e.target.id==='imgInput'){
+    handleImageFile(e.target.files && e.target.files[0]);
+    e.target.value = '';
   }
 });
 
