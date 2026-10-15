@@ -288,24 +288,23 @@ function beep(freq, dur, vol){
   try{
     var Ctx = window.AudioContext || window.webkitAudioContext;
     var ctx = new Ctx();
-    var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
-    o.connect(f); f.connect(g); g.connect(ctx.destination);
-    o.type='sine'; o.frequency.value = freq || 440;
-    f.type='lowpass'; f.frequency.value = (freq||440)*1.4; f.Q.value = 0.7;
-    g.gain.setValueAtTime(0.001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(vol||0.35, ctx.currentTime+0.04);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (dur||150)/1000);
-    o.start();
-    o.stop(ctx.currentTime + (dur||150)/1000 + 0.05);
-    setTimeout(function(){ try{ctx.close();}catch(e){} }, (dur||150)+200);
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    var t = ctx.currentTime, d = (dur||110)/1000, v = vol||0.8;
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine'; o.frequency.value = freq || 440;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(v, t+0.003);
+    g.gain.setValueAtTime(v, t+d-0.005);
+    g.gain.linearRampToValueAtTime(0, t+d);
+    o.start(t);
+    o.stop(t+d+0.02);
+    setTimeout(function(){ try{ctx.close();}catch(e){} }, (dur||110)+300);
   }catch(e){}
 }
 function vib(pattern){ try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
-function countdownBeep(){ beep(392,180); vib(60); }
-function transitionBeep(){
-  beep(392,650,0.55);
-  vib([180,80,180]);
-}
+/* Tonfolge nach Vorlage "Interval Timer": 3-2-1 = kurzer Sinuston 440 Hz (0,11 s), 0 = langer Sinuston 880 Hz (1,01 s) */
+function countdownBeep(){ beep(440, 110, 0.8); vib(60); }
+function transitionBeep(){ beep(880, 1010, 0.8); vib([180,80,180]); }
 function requestWake(){
   try{
     if(navigator.wakeLock){
