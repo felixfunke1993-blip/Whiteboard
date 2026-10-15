@@ -326,9 +326,59 @@ function saveArchiveEntry(entry){
   try{
     var arr = loadArchive();
     arr.unshift(entry);
-    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arr.slice(0,150)));
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arr.slice(0,500)));
   }catch(e){}
 }
+function exportArchive(){
+  var arr = loadArchive();
+  if(!arr.length){ alert('Das Archiv ist leer.'); return; }
+  var json = JSON.stringify({ app:'whiteboard', version:1, exported:new Date().toISOString(), archive:arr }, null, 1);
+  var name = 'whiteboard-archiv-'+new Date().toISOString().slice(0,10)+'.json';
+  var types = ['application/json','text/plain'];
+  for(var i=0;i<types.length;i++){
+    try{
+      var file = new File([json], name, {type:types[i]});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:'Whiteboard Archiv'}).catch(function(){});
+        return;
+      }
+    }catch(e){}
+  }
+  var blob = new Blob([json], {type:'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+}
+
+function importArchiveFile(file){
+  if(!file) return;
+  var r = new FileReader();
+  r.onload = function(){
+    try{
+      var data = JSON.parse(r.result);
+      var list = Array.isArray(data) ? data : (data && Array.isArray(data.archive) ? data.archive : null);
+      if(!list) throw new Error('format');
+      list = list.filter(function(e){ return e && e.id && e.workout && Array.isArray(e.workout.exercises); });
+      var existing = loadArchive(), ids = {};
+      existing.forEach(function(e){ ids[e.id] = true; });
+      var fresh = list.filter(function(e){ return !ids[e.id]; });
+      var merged = existing.concat(fresh).sort(function(a,b){
+        var da = a.date||'', db = b.date||'';
+        return da < db ? 1 : (da > db ? -1 : 0);
+      }).slice(0,500);
+      localStorage.setItem(ARCHIVE_KEY, JSON.stringify(merged));
+      var dup = list.length - fresh.length;
+      alert(fresh.length+' Eintr'+(fresh.length===1?'ag':'äge')+' importiert'+(dup>0 ? ' ('+dup+' bereits vorhanden)' : '')+'.');
+    }catch(e){
+      alert('Die Datei konnte nicht gelesen werden.');
+    }
+    render();
+  };
+  r.readAsText(file);
+}
+
 function deleteArchiveEntry(id){
   try{
     var arr = loadArchive().filter(function(e){ return e.id !== id; });
@@ -1189,7 +1239,14 @@ function renderArchive(){
       '</div>';
     }).join('');
   }
-  return '<div class="topbar"><div class="brand"><span class="chalk-dot"></span><h1>Archiv</h1></div></div><main>'+content+'</main>';
+  var backup = '' +
+    '<input type="file" id="importInput" accept=".json,application/json,text/plain" style="display:none;">' +
+    '<div style="display:flex; gap:8px; margin-bottom:6px;">' +
+      '<button class="secondary-btn" style="flex:1; padding:12px 6px; font-size:13.5px;" data-action="exportArchive">⬇️ Backup exportieren</button>' +
+      '<label for="importInput" class="secondary-btn" style="flex:1; padding:12px 6px; font-size:13.5px; text-align:center; cursor:pointer;">⬆️ Backup importieren</label>' +
+    '</div>' +
+    '<div style="font-size:12px; color:var(--chalk-faint); margin-bottom:16px; line-height:1.5;">Sichert dein Archiv als Datei, z. B. vor einem neuen Lesezeichen oder Gerätewechsel.</div>';
+  return '<div class="topbar"><div class="brand"><span class="chalk-dot"></span><h1>Archiv</h1></div></div><main>'+backup+content+'</main>';
 }
 
 /* ---------- Event delegation ---------- */
@@ -1256,6 +1313,7 @@ app.addEventListener('click', function(e){
   else if(action==='roundBack') roundBack();
   else if(action==='subtractReps') subtractReps();
   else if(action==='runOcr') runOcr();
+  else if(action==='exportArchive') exportArchive();
   else if(action==='removeImage'){ syncNoteInput(); state.refImage = null; state.ocrError = ''; render(); }
   else if(action==='showImage'){ state.imageOverlay = true; state.imageZoom = false; render(); }
   else if(action==='hideImage'){ state.imageOverlay = false; render(); }
@@ -1335,6 +1393,9 @@ function runOcr(){
 app.addEventListener('change', function(e){
   if(e.target && e.target.id==='imgInput'){
     handleImageFile(e.target.files && e.target.files[0]);
+    e.target.value = '';
+  } else if(e.target && e.target.id==='importInput'){
+    importArchiveFile(e.target.files && e.target.files[0]);
     e.target.value = '';
   }
 });
