@@ -172,15 +172,17 @@
   .progress-bar{height:5px; background:#222220; border-radius:5px; overflow:hidden; margin:12px 20px 0;}
   .progress-fill{height:100%; background:var(--accent); transition:width 0.9s linear;}
 
-  .current-block{margin:20px 20px 6px;}
+  .current-block{flex:1; display:flex; flex-direction:column; justify-content:center; margin:16px 20px 6px;}
+  #app.training{padding-bottom:calc(16px + var(--safe-b)); min-height:calc(100vh - var(--safe-t) - var(--safe-b)); min-height:calc(100dvh - var(--safe-t) - var(--safe-b));}
+  .train-screen{flex:1; display:flex; flex-direction:column;}
   .cur-label{color:var(--chalk-faint); font-size:12px; margin-bottom:4px;}
-  .cur-name{font-family:'Oswald',sans-serif; font-size:clamp(38px,11vw,58px); font-weight:600; line-height:1.05; margin-bottom:6px; overflow-wrap:anywhere;}
+  .cur-name{font-family:'Oswald',sans-serif; font-size:clamp(46px,14vw,74px); font-weight:600; line-height:1.05; margin-bottom:6px; overflow-wrap:anywhere;}
   .rep-row{display:flex; align-items:flex-end; gap:18px;}
-  .rep-num{font-family:'Oswald',sans-serif; font-weight:700; line-height:.9; color:var(--accent); font-size:clamp(110px,34vw,170px);}
-  .rep-num.n3{font-size:clamp(90px,27vw,138px);}
-  .rep-num.n4{font-size:clamp(70px,21vw,106px);}
-  .rep-num.n5{font-size:clamp(54px,16vw,82px);}
-  .rep-unit{font-size:13px; color:var(--chalk-faint); margin-top:6px;}
+  .rep-num{font-family:'Oswald',sans-serif; font-weight:700; line-height:.9; color:var(--accent); font-size:clamp(140px,45vw,230px);}
+  .rep-num.n3{font-size:clamp(112px,35vw,180px);}
+  .rep-num.n4{font-size:clamp(88px,27vw,138px);}
+  .rep-num.n5{font-size:clamp(66px,20vw,104px);}
+  .rep-unit{font-size:14px; color:var(--chalk-faint); margin-top:6px;}
   .rs{padding-bottom:28px;}
   .rs-main{font-size:30px; font-weight:600; line-height:1.1; white-space:nowrap;}
   .rs-sub{font-size:14px; color:var(--chalk-faint); margin-top:2px;}
@@ -607,6 +609,12 @@ function parseWorkout(raw){
     type='circuit';
     params.rounds = parseInt(m[1],10);
     lines = lines.slice(1);
+  } else if((m = first.match(/^E\s*(\d+)\s*MOM\s*(?:x\s*)?(\d+)?\s*(min\w*)?/i))){
+    var en = parseInt(m[1],10), enum_ = m[2] ? parseInt(m[2],10) : null, eMin = !!m[3];
+    params.rounds = enum_==null ? 4 : (eMin ? Math.max(1, Math.floor(enum_/en)) : enum_);
+    if(en===1){ type='emom'; params.intervalSec = 60; }
+    else { type='emomblock'; params.intervalMin = en; params.intervalSec = en*60; }
+    lines = lines.slice(1);
   } else if((m = first.match(/^EMOM\s*(\d+)(?:\s*\/\s*(\d+))?/i))){
     type='emom';
     params.rounds = parseInt(m[1],10);
@@ -629,7 +637,7 @@ function parseWorkout(raw){
   }
 
   var exercises = lines.map(parseExerciseLine).filter(Boolean);
-  if(type==='circuit') exercises.forEach(function(e){ e.sets = 1; });
+  if(type==='circuit' || type==='emomblock') exercises.forEach(function(e){ e.sets = 1; });
   if(exercises.length===0) return null;
 
   return { type: type, params: params, exercises: exercises };
@@ -682,11 +690,12 @@ function render(){
   var html = '';
   if(state.screen==='note') html = renderNote();
   else if(state.screen==='preview') html = renderPreview();
-  else if(state.screen==='training') html = renderTraining();
+  else if(state.screen==='training') html = '<div class="train-screen">'+renderTraining()+'</div>';
   else if(state.screen==='summary') html = renderSummary();
   else if(state.screen==='archive') html = renderArchive();
 
   var showNav = (state.screen==='note' || state.screen==='archive');
+  app.className = (state.screen==='training') ? 'training' : '';
   app.innerHTML = html + (showNav ? renderBottomNav() : '');
   if(state.screen==='training'){ updateTimerDOM(); scrollOverviewToCurrent(); }
 }
@@ -737,19 +746,21 @@ function renderNote(){
       'Erste Zeile bestimmt den Workout-Typ (optional):<br>' +
       '<code>ZIRKEL 4 Runden</code> – Übungen der Reihe nach, 4 Durchgänge<br>' +
       '<code>EMOM25</code> – 25 Runden à 60 Sek.<br>' +
+      '<code>E6MOM 4</code> – alle 6 Min. ein Block aus mehreren Übungen, 4 Blöcke, Rest des Intervalls = Pause (auch <code>E3MOM</code>, <code>E10MOM</code>; oder Gesamtzeit: <code>E6MOM 24min</code>)<br>' +
       '<code>AMRAP15</code> – 15 Minuten, so viele Runden wie möglich<br>' +
       '<code>TABATA</code> – 8 Runden 20s/10s (auch <code>TABATA10/30/15</code>)<br>' +
       '<code>FOR TIME</code> – auf Zeit, ohne Countdown<br>' +
       'Keine Typ-Zeile = klassisches Training ohne Timer.<br><br>' +
       'Pro Übungszeile: Name + optional <code>3x10</code>, <code>40kg</code>, <code>Sätze</code>, <code>Wiederholungen</code>, <code>m</code> oder <code>sek</code>, Zahl vor oder nach dem Namen.<br><br>' +
       'Nur ein bekannter Name im Feld (z. B. <code>Cindy</code>) lädt automatisch das komplette Workout.' +
-      '<pre>EMOM25\nKettlebell Swings 15\nBurpees 10\n\nKniebeugen 4x10 60kg\nLiegestütze 3 Sätze 15 Wiederholungen\nKlimmzüge 3x8\nRudern 500m</pre>' +
+      '<pre>EMOM25\nKettlebell Swings 15\nBurpees 10\n\nE6MOM 4\n12 Wall Balls\n10 Burpees\n8 Klimmzüge\n\nKniebeugen 4x10 60kg\nLiegestütze 3 Sätze 15 Wiederholungen\nKlimmzüge 3x8\nRudern 500m</pre>' +
     '</details>' +
   '</main>';
 }
 
 /* ---------- Preview screen ---------- */
-var TYPE_LABELS = { classic:'Klassisch', circuit:'Zirkel', emom:'EMOM', amrap:'AMRAP', tabata:'Tabata', fortime:'For Time' };
+var TYPE_LABELS = { classic:'Klassisch', circuit:'Zirkel', emom:'EMOM', emomblock:'Block-EMOM', amrap:'AMRAP', tabata:'Tabata', fortime:'For Time' };
+function typeText(w){ return w.type==='emomblock' ? 'E'+(w.params.intervalMin||6)+'MOM' : (TYPE_LABELS[w.type]||w.type); }
 var UNIT_LABELS = { reps:'Wiederholungen', distance:'Meter', time:'Sekunden' };
 
 function renderPreview(){
@@ -763,6 +774,11 @@ function renderPreview(){
     params = '<div class="params-row">' +
       '<div class="param-field"><label>Runden</label><input type="number" min="1" id="p_rounds" value="'+(w.params.rounds||10)+'"></div>' +
       '<div class="param-field"><label>Intervall (Sek.)</label><input type="number" min="5" id="p_interval" value="'+(w.params.intervalSec||60)+'"></div>' +
+    '</div>';
+  } else if(w.type==='emomblock'){
+    params = '<div class="params-row">' +
+      '<div class="param-field"><label>Blöcke</label><input type="number" min="1" id="p_rounds" value="'+(w.params.rounds||4)+'"></div>' +
+      '<div class="param-field"><label>Intervall (Min.)</label><input type="number" min="1" id="p_blockmin" value="'+(w.params.intervalMin||6)+'"></div>' +
     '</div>';
   } else if(w.type==='circuit'){
     params = '<div class="params-row">' +
@@ -837,6 +853,10 @@ function syncPreviewFromDOM(){
     var r=document.getElementById('p_rounds'), iv=document.getElementById('p_interval');
     if(r) w.params.rounds = Math.max(1, parseInt(r.value,10)||10);
     if(iv) w.params.intervalSec = Math.max(5, parseInt(iv.value,10)||60);
+  } else if(w.type==='emomblock'){
+    var br_=document.getElementById('p_rounds'), bm_=document.getElementById('p_blockmin');
+    if(br_) w.params.rounds = Math.max(1, parseInt(br_.value,10)||4);
+    if(bm_){ w.params.intervalMin = Math.max(1, parseInt(bm_.value,10)||6); w.params.intervalSec = w.params.intervalMin*60; }
   } else if(w.type==='circuit'){
     var cr=document.getElementById('p_rounds');
     if(cr) w.params.rounds = Math.max(1, parseInt(cr.value,10)||3);
@@ -864,7 +884,7 @@ function syncPreviewFromDOM(){
 
 /* ---------- Training screen ---------- */
 function hasTimer(w){
-  return w.type==='emom' || w.type==='amrap' || w.type==='tabata' || w.type==='fortime' || ((w.type==='classic' || w.type==='circuit') && !!w.stopwatchEnabled);
+  return w.type==='emom' || w.type==='emomblock' || w.type==='amrap' || w.type==='tabata' || w.type==='fortime' || ((w.type==='classic' || w.type==='circuit') && !!w.stopwatchEnabled);
 }
 function isCountUp(w){
   return w.type==='fortime' || ((w.type==='classic' || w.type==='circuit') && !!w.stopwatchEnabled);
@@ -872,10 +892,10 @@ function isCountUp(w){
 function startTraining(){
   var w = state.workout;
   state.imageOverlay = false;
-  training = { startedAt:Date.now(), ticksDone:0, elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
+  training = { blockFinished:false, startedAt:Date.now(), ticksDone:0, elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
   resetRemaining();
 
-  if(w.type==='emom'){ training.remaining = w.params.intervalSec; }
+  if(w.type==='emom' || w.type==='emomblock'){ training.remaining = w.params.intervalSec; }
   else if(w.type==='amrap'){ training.remaining = w.params.timeCapSec; }
   else if(w.type==='tabata'){ training.remaining = w.params.work; }
 
@@ -944,6 +964,17 @@ function stepSecond(msToNext){
       training.remaining = w.params.intervalSec;
       boundary = true;
     }
+  } else if(w.type==='emomblock'){
+    training.remaining--;
+    if(msToNext>=0) scheduleMarks(training.remaining, msToNext);
+    if(training.remaining<=0){
+      training.currentRound++;
+      if(training.currentRound > w.params.rounds){ finishWorkout(); return 'end'; }
+      training.remaining = w.params.intervalSec;
+      training.currentExerciseIndex = 0;
+      training.blockFinished = false;
+      boundary = true;
+    }
   } else if(w.type==='tabata'){
     training.remaining--;
     if(msToNext>=0) scheduleMarks(training.remaining, msToNext);
@@ -972,7 +1003,7 @@ function updateTimerDOM(){
   var bar = document.getElementById('timerBar');
   if(!tv) return;
   var val, total;
-  if(w.type==='emom'){ val=training.remaining; total=w.params.intervalSec; }
+  if(w.type==='emom' || w.type==='emomblock'){ val=training.remaining; total=w.params.intervalSec; }
   else if(w.type==='tabata'){ val=training.remaining; total = training.phase==='work'?w.params.work:w.params.rest; }
   else if(w.type==='amrap'){ val=training.remaining; total=w.params.timeCapSec; }
   else if(isCountUp(w)){ val=training.elapsed; total=null; }
@@ -986,6 +1017,7 @@ function currentExercise(){
   if(!w || !training) return null;
   if(w.type==='emom'){ return w.exercises[(training.currentRound-1) % w.exercises.length]; }
   if(w.type==='tabata'){ return w.exercises[(training.round-1) % w.exercises.length]; }
+  if(w.type==='emomblock' && training.blockFinished) return null;
   return w.exercises[training.currentExerciseIndex];
 }
 
@@ -1007,6 +1039,15 @@ function nextInfo(){
   } else if(w.type==='emom'){
     if(t.currentRound < w.params.rounds){ ex = w.exercises[t.currentRound % n]; label = 'Runde '+(t.currentRound+1); }
     else return {end:true};
+  } else if(w.type==='emomblock'){
+    if(!t.blockFinished){
+      if(t.currentExerciseIndex+1 < n){ ex = w.exercises[t.currentExerciseIndex+1]; }
+      else if(t.currentRound < w.params.rounds){ return {rest:true, meta:'dann Block '+(t.currentRound+1)}; }
+      else return {end:true};
+    } else {
+      if(t.currentRound < w.params.rounds){ ex = w.exercises[0]; label = 'Block '+(t.currentRound+1); }
+      else return {end:true};
+    }
   } else if(w.type==='tabata'){
     if(t.phase==='work') return {rest:true};
     if(t.round < w.params.rounds){ ex = w.exercises[t.round % n]; label = 'Runde '+(t.round+1); }
@@ -1020,7 +1061,7 @@ function renderNext(){
   var info = nextInfo();
   var name, meta = '';
   if(info.end){ name = '🏁 Letzte Übung'; }
-  else if(info.rest){ name = 'Pause'; meta = w.params.rest+' s'; }
+  else if(info.rest){ name = 'Pause'; meta = (info.meta!=null ? info.meta : w.params.rest+' s'); }
   else {
     var ex = info.ex, parts = [];
     name = esc(ex.name);
@@ -1050,10 +1091,11 @@ function unitSuffix(u){ return u==='distance' ? 'm' : (u==='time' ? 's' : 'x'); 
 function renderTraining(){
   var w = state.workout;
   var ex = currentExercise();
-  var typeLabel = TYPE_LABELS[w.type];
+  var typeLabel = typeText(w);
 
   var leftMain = '', leftSub = '';
   if(w.type==='emom'){ leftMain = 'Runde '+training.currentRound+' / '+w.params.rounds; }
+  else if(w.type==='emomblock'){ leftMain = 'Block '+Math.min(training.currentRound, w.params.rounds)+' / '+w.params.rounds; if(training.blockFinished) leftSub = 'geschafft – Pause'; }
   else if(w.type==='tabata'){
     leftMain = 'Runde '+training.round+' / '+w.params.rounds;
     leftSub = '<span class="phase-badge '+(training.phase==='work'?'work':'rest')+'">'+(training.phase==='work'?'Belastung':'Pause')+'</span>';
@@ -1071,7 +1113,9 @@ function renderTraining(){
   }
 
   var curBlock = '';
-  if(ex){
+  if(w.type==='emomblock' && training.blockFinished){
+    curBlock = '<div class="current-block"><div class="cur-label">Block geschafft</div><div class="cur-name">Pause</div><div class="rep-unit" style="font-size:16px;">Der nächste Block startet, sobald der Timer abläuft.</div></div>';
+  } else if(ex){
     var hasSets = (w.type==='classic' || w.type==='fortime');
     var showCounter = (w.counterEnabled && hasSets && training.remainingValue!=null);
     var big = '';
@@ -1135,7 +1179,7 @@ function renderTraining(){
   } else {
     var items = w.exercises.map(function(e2, i){
       var cls = i<training.currentExerciseIndex ? 'done' : (i===training.currentExerciseIndex ? 'current' : '');
-      var simple = (w.type==='circuit' || w.type==='amrap');
+      var simple = (w.type==='circuit' || w.type==='amrap' || w.type==='emomblock');
       var meta = (e2.value!=null? (simple?'':e2.sets+'x')+e2.value+(e2.unitType==='distance'?'m':e2.unitType==='time'?'s':'') : (simple?'':e2.sets+' Satz'+(e2.sets>1?'e':''))) + (e2.weight!=null? (simple && e2.value==null ? '' : ' · ')+e2.weight+'kg':'');
       var check = i<training.currentExerciseIndex ? '✓' : '';
       return '<div class="ov-item '+cls+'"><div class="ov-check">'+check+'</div><div class="ov-name">'+esc(e2.name)+'</div><div class="ov-meta">'+meta+'</div></div>';
@@ -1172,6 +1216,13 @@ function advanceSetOrExercise(){
 }
 function setDone(){
   var w = state.workout;
+  if(w.type==='emomblock'){
+    if(training.blockFinished) return;
+    training.currentExerciseIndex++;
+    if(training.currentExerciseIndex >= w.exercises.length){ training.blockFinished = true; }
+    render();
+    return;
+  }
   if(w.type==='amrap'){
     training.currentExerciseIndex++;
     if(training.currentExerciseIndex >= w.exercises.length){
@@ -1196,6 +1247,12 @@ function setDone(){
 }
 function setBack(){
   var w = state.workout;
+  if(w.type==='emomblock'){
+    if(training.blockFinished){ training.blockFinished = false; training.currentExerciseIndex = w.exercises.length-1; }
+    else if(training.currentExerciseIndex > 0){ training.currentExerciseIndex--; }
+    render();
+    return;
+  }
   if(w.type==='amrap'){
     training.currentExerciseIndex--;
     if(training.currentExerciseIndex < 0){
@@ -1278,6 +1335,9 @@ function finishWorkout(){
   if(w.type==='emom'){
     var er = Math.min(t.currentRound, w.params.rounds);
     resultText = er+' / '+w.params.rounds+' Runden absolviert';
+  } else if(w.type==='emomblock'){
+    var bl = Math.min(t.currentRound, w.params.rounds);
+    resultText = bl+' / '+w.params.rounds+' Blöcke absolviert';
   } else if(w.type==='tabata'){
     var tr2 = Math.min(t.round, w.params.rounds);
     resultText = tr2+' / '+w.params.rounds+' Runden absolviert';
@@ -1363,7 +1423,7 @@ function renderArchiveEntry(entry){
   var planned = !!entry.planned;
   return '' +
   '<div class="arch-item"'+(planned ? ' style="border-color:var(--accent);"' : '')+'>' +
-    '<div class="arch-top"><div><span class="arch-type">'+esc(TYPE_LABELS[w.type]||w.type)+'</span><br><span class="arch-date">'+(planned?'gespeichert am ':'')+dateStr+(entry.image?' · 📷 mit Anleitung':'')+'</span></div></div>' +
+    '<div class="arch-top"><div><span class="arch-type">'+esc(typeText(w))+'</span><br><span class="arch-date">'+(planned?'gespeichert am ':'')+dateStr+(entry.image?' · 📷 mit Anleitung':'')+'</span></div></div>' +
     '<div class="arch-names">'+esc(names)+'</div>' +
     (planned ? '' : '<div class="arch-result">'+esc(entry.result)+'</div>') +
     '<div class="arch-actions">' +
@@ -1440,6 +1500,8 @@ app.addEventListener('click', function(e){
     syncPreviewFromDOM();
     state.workout.type = t.getAttribute('data-type');
     if(state.workout.type==='circuit' && !state.workout.params.rounds){ state.workout.params.rounds=3; }
+    if(state.workout.type==='emomblock' && !state.workout.params.intervalMin){ state.workout.params.intervalMin=6; state.workout.params.intervalSec=360; state.workout.params.rounds=4; }
+    if(state.workout.type==='emom' && state.workout.params.intervalMin){ delete state.workout.params.intervalMin; state.workout.params.intervalSec=60; }
     if(state.workout.type==='emom' && !state.workout.params.rounds){ state.workout.params.rounds=10; state.workout.params.intervalSec=60; }
     if(state.workout.type==='amrap' && !state.workout.params.minutes){ state.workout.params.minutes=15; state.workout.params.timeCapSec=900; }
     if(state.workout.type==='tabata' && !state.workout.params.rounds){ state.workout.params.rounds=8; state.workout.params.work=20; state.workout.params.rest=10; }
