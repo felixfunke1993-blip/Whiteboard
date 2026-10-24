@@ -239,7 +239,19 @@
   .arch-names{font-size:13.5px; color:var(--chalk-dim); margin-top:4px;}
   .arch-result{font-family:'IBM Plex Mono',monospace; color:var(--accent); font-weight:700; margin-top:8px; font-size:14.5px;}
   .arch-actions{display:flex; gap:8px; margin-top:12px;}
-  .arch-actions button{flex:1; padding:10px; border-radius:10px; font-weight:600; font-size:13.5px; border:1px solid var(--line);}
+  .arch-actions button{flex:1; padding:10px 6px; border-radius:10px; font-weight:600; font-size:13px; border:1px solid var(--line);}
+  .arch-tag{display:inline-block; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:12px; background:var(--neutral-dim); color:var(--chalk-dim);}
+  .arch-tag.diff{background:var(--accent-dim); color:var(--accent);}
+  .df-list{margin-top:8px; display:flex; flex-direction:column; gap:6px;}
+  .df-row{display:flex; justify-content:space-between; gap:10px; font-size:13.5px; color:var(--chalk-dim); padding:2px 0;}
+  .df-name{font-weight:600; color:var(--chalk);}
+  .df-val{font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--chalk-faint); text-align:right;}
+  .df-row.changed{flex-direction:column; gap:4px; border-left:2px solid var(--accent); padding:4px 0 4px 10px;}
+  .df-was{font-weight:400; color:var(--chalk-faint); font-size:12px;}
+  .df-cmp{display:flex; flex-direction:column; gap:2px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;}
+  .df-cmp i{font-style:normal; display:inline-block; width:84px; font-family:'Inter',sans-serif; font-size:11.5px; color:var(--chalk-faint);}
+  .df-plan{color:var(--chalk-faint);}
+  .df-done{color:var(--accent);}
   .arch-restart{background:var(--bg-raised); color:var(--chalk);}
   .arch-del{background:transparent; color:var(--danger);}
   .empty-state{text-align:center; padding:60px 20px; color:var(--chalk-faint);}
@@ -693,6 +705,7 @@ function render(){
   else if(state.screen==='training') html = '<div class="train-screen">'+renderTraining()+'</div>';
   else if(state.screen==='summary') html = renderSummary();
   else if(state.screen==='archive') html = renderArchive();
+  else if(state.screen==='editEntry') html = renderEdit();
 
   var showNav = (state.screen==='note' || state.screen==='archive');
   app.className = (state.screen==='training') ? 'training' : '';
@@ -763,6 +776,27 @@ var TYPE_LABELS = { classic:'Klassisch', circuit:'Zirkel', emom:'EMOM', emombloc
 function typeText(w){ return w.type==='emomblock' ? 'E'+(w.params.intervalMin||6)+'MOM' : (TYPE_LABELS[w.type]||w.type); }
 var UNIT_LABELS = { reps:'Wiederholungen', distance:'Meter', time:'Sekunden' };
 
+function exCardsHtml(w){
+  return w.exercises.map(function(ex, i){
+    return '' +
+    '<div class="ex-card" data-idx="'+i+'">' +
+      '<span class="rownum mono">#'+(i+1)+'</span>' +
+      (w.exercises.length>1 ? '<button class="ex-remove" data-action="removeEx" data-idx="'+i+'">✕</button>' : '') +
+      '<input class="ex-name" data-idx="'+i+'" data-field="name" value="'+esc(ex.name)+'">' +
+      '<div class="ex-grid">' +
+        '<div class="fld"><label>Sätze</label><input type="number" min="1" data-idx="'+i+'" data-field="sets" value="'+ex.sets+'"></div>' +
+        '<div class="fld"><label>Wert</label><input type="number" min="0" data-idx="'+i+'" data-field="value" value="'+(ex.value!=null?ex.value:'')+'"></div>' +
+        '<div class="fld"><label>Einheit</label><select data-idx="'+i+'" data-field="unitType">' +
+          Object.keys(UNIT_LABELS).map(function(u){ return '<option value="'+u+'" '+(ex.unitType===u?'selected':'')+'>'+UNIT_LABELS[u]+'</option>'; }).join('') +
+        '</select></div>' +
+      '</div>' +
+      '<div class="ex-grid" style="margin-top:8px;grid-template-columns:1fr;">' +
+        '<div class="fld"><label>Gewicht (kg, optional)</label><input type="number" min="0" step="0.5" data-idx="'+i+'" data-field="weight" value="'+(ex.weight!=null?ex.weight:'')+'"></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
 function renderPreview(){
   var w = state.workout;
   var chips = Object.keys(TYPE_LABELS).map(function(t){
@@ -796,24 +830,7 @@ function renderPreview(){
     '</div>';
   }
 
-  var exCards = w.exercises.map(function(ex, i){
-    return '' +
-    '<div class="ex-card" data-idx="'+i+'">' +
-      '<span class="rownum mono">#'+(i+1)+'</span>' +
-      (w.exercises.length>1 ? '<button class="ex-remove" data-action="removeEx" data-idx="'+i+'">✕</button>' : '') +
-      '<input class="ex-name" data-idx="'+i+'" data-field="name" value="'+esc(ex.name)+'">' +
-      '<div class="ex-grid">' +
-        '<div class="fld"><label>Sätze</label><input type="number" min="1" data-idx="'+i+'" data-field="sets" value="'+ex.sets+'"></div>' +
-        '<div class="fld"><label>Wert</label><input type="number" min="0" data-idx="'+i+'" data-field="value" value="'+(ex.value!=null?ex.value:'')+'"></div>' +
-        '<div class="fld"><label>Einheit</label><select data-idx="'+i+'" data-field="unitType">' +
-          Object.keys(UNIT_LABELS).map(function(u){ return '<option value="'+u+'" '+(ex.unitType===u?'selected':'')+'>'+UNIT_LABELS[u]+'</option>'; }).join('') +
-        '</select></div>' +
-      '</div>' +
-      '<div class="ex-grid" style="margin-top:8px;grid-template-columns:1fr;">' +
-        '<div class="fld"><label>Gewicht (kg, optional)</label><input type="number" min="0" step="0.5" data-idx="'+i+'" data-field="weight" value="'+(ex.weight!=null?ex.weight:'')+'"></div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  var exCards = exCardsHtml(w);
 
   var counterToggle = '' +
   '<label style="display:flex; align-items:flex-start; gap:10px; padding:14px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:16px; background:var(--bg-card); cursor:pointer;">' +
@@ -845,6 +862,8 @@ function renderPreview(){
 
 function syncPreviewFromDOM(){
   var w = state.workout;
+  var er_ = document.getElementById('e_result');
+  if(er_) state.editResult = er_.value;
   var ce = document.getElementById('p_counterEnabled');
   if(ce) w.counterEnabled = !!ce.checked;
   var swc = document.getElementById('p_stopwatch');
@@ -892,7 +911,7 @@ function isCountUp(w){
 function startTraining(){
   var w = state.workout;
   state.imageOverlay = false;
-  training = { blockFinished:false, startedAt:Date.now(), ticksDone:0, elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
+  training = { plan: JSON.parse(JSON.stringify((state.plannedId && state.planBase) ? state.planBase : state.workout)), blockFinished:false, startedAt:Date.now(), ticksDone:0, elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
   resetRemaining();
 
   if(w.type==='emom' || w.type==='emomblock'){ training.remaining = w.params.intervalSec; }
@@ -1354,7 +1373,7 @@ function finishWorkout(){
     if(w.stopwatchEnabled) resultText += ' · '+formatTime(t.elapsed);
   }
 
-  var entry = { id: Date.now(), date: new Date().toISOString(), workout: JSON.parse(JSON.stringify(w)), result: resultText };
+  var entry = { id: Date.now(), date: new Date().toISOString(), workout: JSON.parse(JSON.stringify(w)), plan: t.plan || JSON.parse(JSON.stringify(w)), result: resultText };
   if(!saveArchiveEntry(entry)) alert('Das Workout konnte nicht im Archiv gespeichert werden (Speicher voll). Bitte alte Einträge löschen oder ein Backup exportieren.');
   else if(state.plannedId){ deleteArchiveEntry(state.plannedId); }
   state.plannedId = null;
@@ -1415,6 +1434,58 @@ function renderSummary(){
 }
 
 /* ---------- Archive screen ---------- */
+function fmtEx(e){
+  var parts = [];
+  if(e.value!=null){
+    var u = e.unitType==='distance' ? ' m' : (e.unitType==='time' ? ' s' : '');
+    parts.push((e.sets>1 ? e.sets+'×' : '')+e.value+u+((e.unitType==='reps' || !e.unitType) && e.sets<=1 ? ' Wdh.' : ''));
+  } else if(e.sets>1){ parts.push(e.sets+' Sätze'); }
+  if(e.weight!=null) parts.push(e.weight+' kg');
+  return parts.join(' · ') || '–';
+}
+function exSame(a,b){
+  return a.name===b.name && a.sets===b.sets && (a.value==null?null:a.value)===(b.value==null?null:b.value) &&
+    (a.unitType||null)===(b.unitType||null) && (a.weight==null?null:a.weight)===(b.weight==null?null:b.weight);
+}
+function diffRows(entry){
+  var plan = entry.plan.exercises, done = entry.workout.exercises, rows = [];
+  var n = Math.max(plan.length, done.length);
+  for(var i=0;i<n;i++){
+    var p = plan[i], d = done[i];
+    if(p && d) rows.push({ name:d.name, planName:p.name, p:fmtEx(p), d:fmtEx(d), changed:!exSame(p,d) });
+    else if(p) rows.push({ name:p.name, p:fmtEx(p), d:'nicht gemacht', changed:true });
+    else rows.push({ name:d.name, p:'nicht geplant', d:fmtEx(d), changed:true });
+  }
+  return rows;
+}
+function renderDiff(entry){
+  var rows = diffRows(entry);
+  return '<div class="df-list">'+rows.map(function(r){
+    if(!r.changed) return '<div class="df-row"><span class="df-name">'+esc(r.name)+'</span><span class="df-val">'+esc(r.d)+'</span></div>';
+    return '<div class="df-row changed"><div class="df-name">'+esc(r.name)+(r.planName && r.planName!==r.name ? ' <span class="df-was">(geplant: '+esc(r.planName)+')</span>' : '')+'</div>' +
+      '<div class="df-cmp"><span class="df-plan"><i>geplant</i>'+esc(r.p)+'</span><span class="df-done"><i>absolviert</i>'+esc(r.d)+'</span></div></div>';
+  }).join('')+'</div>';
+}
+function updateArchiveEntry(entry){
+  try{
+    var arr = loadArchive().map(function(e){ return e.id===entry.id ? entry : e; });
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arr));
+    return true;
+  }catch(e){ return false; }
+}
+function renderEdit(){
+  var w = state.workout;
+  return '' +
+  header('Training bearbeiten','goto:archive') +
+  '<main>' +
+    '<div class="hint" style="margin-bottom:16px;">Trage ein, was du tatsächlich gemacht hast. Der ursprüngliche Plan bleibt gespeichert und wird im Archiv gegenübergestellt. Die absolvierten Werte sind der Startpunkt, wenn du das Workout erneut startest.</div>' +
+    '<div id="exList">'+exCardsHtml(w)+'</div>' +
+    '<button class="add-ex-btn" data-action="addEx">＋ Übung hinzufügen</button>' +
+    '<div class="param-field" style="margin:6px 0 14px;"><label>Ergebnis (optional anpassen)</label><input type="text" id="e_result" value="'+esc(state.editResult||'')+'" style="width:100%;padding:10px;font-size:15px;"></div>' +
+    '<button class="primary-btn" data-action="saveEdit">Änderungen speichern</button>' +
+    '<button class="cancel-link" data-action="goto:archive">Abbrechen</button>' +
+  '</main>';
+}
 function renderArchiveEntry(entry){
   var w = entry.workout;
   var names = w.exercises.map(function(e){ return e.name; }).join(' · ');
@@ -1424,10 +1495,14 @@ function renderArchiveEntry(entry){
   return '' +
   '<div class="arch-item"'+(planned ? ' style="border-color:var(--accent);"' : '')+'>' +
     '<div class="arch-top"><div><span class="arch-type">'+esc(typeText(w))+'</span><br><span class="arch-date">'+(planned?'gespeichert am ':'')+dateStr+(entry.image?' · 📷 mit Anleitung':'')+'</span></div></div>' +
-    '<div class="arch-names">'+esc(names)+'</div>' +
+    (!planned && entry.plan ? (function(){
+        var changed = diffRows(entry).some(function(r){ return r.changed; });
+        return '<div style="margin-top:8px;"><span class="arch-tag'+(changed?' diff':'')+'">'+(changed ? 'Abweichung vom Plan' : 'wie geplant')+'</span></div>' + renderDiff(entry);
+      })() : '<div class="arch-names">'+esc(names)+'</div>') +
     (planned ? '' : '<div class="arch-result">'+esc(entry.result)+'</div>') +
     '<div class="arch-actions">' +
       '<button class="arch-restart" data-action="restartArchive" data-id="'+entry.id+'">'+(planned?'▶ Starten':'↻ Erneut starten')+'</button>' +
+      (planned ? '' : '<button class="arch-restart" data-action="editArchive" data-id="'+entry.id+'">✎ Bearbeiten</button>') +
       '<button class="arch-del" data-action="deleteArchive" data-id="'+entry.id+'">Löschen</button>' +
     '</div>' +
   '</div>';
@@ -1537,6 +1612,31 @@ app.addEventListener('click', function(e){
   else if(action==='cancelTraining') cancelTraining();
   else if(action==='restartFresh') restartFresh();
   else if(action==='finishManually') finishManually();
+  else if(action==='editArchive'){
+    var eid = parseInt(t.getAttribute('data-id'),10);
+    var eentry = loadArchive().filter(function(e){ return e.id===eid; })[0];
+    if(eentry){
+      state.workout = JSON.parse(JSON.stringify(eentry.workout));
+      state.editId = eid;
+      state.editResult = eentry.result || '';
+      state.screen = 'editEntry';
+      render();
+    }
+  }
+  else if(action==='saveEdit'){
+    syncPreviewFromDOM();
+    var sentry = loadArchive().filter(function(e){ return e.id===state.editId; })[0];
+    if(sentry){
+      if(!sentry.plan) sentry.plan = JSON.parse(JSON.stringify(sentry.workout));
+      sentry.workout = JSON.parse(JSON.stringify(state.workout));
+      sentry.result = (state.editResult||'').trim() || sentry.result;
+      sentry.edited = true;
+      if(!updateArchiveEntry(sentry)) alert('Speichern fehlgeschlagen (Speicher voll?).');
+    }
+    state.workout = null; state.editId = null; state.editResult = '';
+    state.screen = 'archive';
+    render();
+  }
   else if(action==='restartArchive'){
     var id = parseInt(t.getAttribute('data-id'),10);
     var entry = loadArchive().filter(function(e){ return e.id===id; })[0];
@@ -1544,6 +1644,7 @@ app.addEventListener('click', function(e){
       state.workout = JSON.parse(JSON.stringify(entry.workout));
       state.refImage = entry.image || null;
       state.plannedId = entry.planned ? entry.id : null;
+      state.planBase = entry.planned ? JSON.parse(JSON.stringify(entry.workout)) : null;
       state.screen = 'preview';
       render();
     }
