@@ -280,6 +280,18 @@
   .g-body h4{margin:14px 0 4px; font-size:14px; color:var(--chalk); font-family:inherit; font-weight:600;}
   .g-body code{background:var(--bg); padding:1px 6px; border-radius:6px; color:var(--accent); font-family:'IBM Plex Mono',monospace; font-size:12.5px; white-space:nowrap;}
   .g-body pre{white-space:pre-wrap; background:var(--bg); padding:10px 12px; border-radius:8px; font-size:12.5px; color:var(--chalk-dim); margin:6px 0 10px; font-family:'IBM Plex Mono',monospace; line-height:1.55;}
+  .arch-search{width:100%; padding:13px 14px; font-size:15px; border-radius:12px; margin-bottom:10px;}
+  .arch-filter{display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:8px;}
+  .arch-bar{display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px;}
+  .arch-count{font-size:12.5px; color:var(--chalk-faint); margin-bottom:10px;}
+  .tag-row{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center;}
+  .tag-chip{font-family:inherit; font-size:12.5px; font-weight:600; padding:5px 10px; border-radius:14px; border:1px solid var(--line); background:var(--neutral-dim); color:var(--chalk-dim); cursor:pointer;}
+  .tag-chip.on{background:var(--accent-dim); border-color:var(--accent); color:var(--accent);}
+  .tag-add{font-family:inherit; font-size:12.5px; font-weight:600; padding:5px 10px; border-radius:14px; border:1px dashed var(--line); background:transparent; color:var(--chalk-faint); cursor:pointer;}
+  .tag-panel{margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--bg);}
+  .tag-picker .tag-line{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+  .tag-input-row{display:flex; gap:8px; align-items:center;}
+  .tag-input-row input{flex:1; min-width:0; padding:10px 12px; font-size:15px;}
   .cancel-link{display:block; text-align:center; margin-top:14px; color:var(--chalk-faint); font-size:13px; background:none; border:none; text-decoration:underline;}
 </style>
 </head>
@@ -794,6 +806,7 @@ Plank 40s</pre>
       <li><b>Übungen anpassen:</b> Name, Sätze, Wert, Einheit (Wiederholungen / Meter / Sekunden) und Gewicht. Mit ✕ entfernst du eine Übung, mit „＋ Übung hinzufügen" ergänzt du eine.</li>
       <li><b>Teilmengen-Zähler</b> (Häkchen): Für große Zahlen wie bei Murph. Im Training trägst du zwischendurch ein, wie viele du schon geschafft hast. Die App zieht sie von der Zielzahl ab und springt bei 0 automatisch weiter. Gilt für klassische und For-Time-Trainings.</li>
       <li><b>Stoppuhr</b> (Häkchen, bei Klassisch und Zirkel): Die Gesamtzeit läuft mit. Bei Timer-Workouts läuft die Zeit immer automatisch.</li>
+      <li><b>Schlagwörter</b> (optional): Vergib Begriffe wie „Brust“ oder „Oberkörper“. Tippe einen Begriff aus der Liste an oder schreibe einen neuen. Neue Begriffe landen automatisch in der Liste.</li>
       <li><b>„Training starten"</b> beginnt sofort. <b>„Im Archiv speichern (für später)"</b> legt das Workout unter „Geplant" ab, z. B. am Vortag.</li>
     </ul>`;
 
@@ -810,6 +823,8 @@ Plank 40s</pre>
   var archive = `
     <p>Unten in der Leiste wechselst du zwischen <b>Notizzettel</b> und <b>Archiv</b>.</p>
     <ul>
+      <li><b>Suchen:</b> Das Suchfeld oben findet Trainings nach Datum (z. B. <code>24.10.</code>), Wochentag (<code>Samstag</code>), Monat, Schlagwort, Übung und Typ. Mehrere Begriffe grenzen die Suche weiter ein, z. B. <code>samstag brust</code>.</li>
+      <li><b>Schlagwörter:</b> An jedem Eintrag steht „＋ Schlagwort“ bzw. „🏷 ändern“. Über die Schlagwort-Buttons unter dem Suchfeld filterst du die Liste. Wählst du mehrere, zeigt sie nur Trainings mit allen gewählten Begriffen. „Nach Schlagwort gruppieren“ sortiert die Liste in Abschnitte pro Begriff.</li>
       <li><b>📌 Geplant:</b> Workouts, die du für später gespeichert hast. „▶ Starten" öffnet die Vorschau, dort kannst du noch Änderungen machen. Nach dem Training wird der geplante Eintrag durch das absolvierte Workout ersetzt.</li>
       <li><b>Absolviert:</b> Alle abgeschlossenen Trainings mit Datum und Ergebnis. „↻ Erneut starten" wiederholt ein Training.</li>
       <li><b>✎ Bearbeiten:</b> Trage nachträglich ein, was du tatsächlich gemacht hast, z. B. ein anderes Gewicht. Diese Werte sind der Startpunkt, wenn du das Workout wieder startest.</li>
@@ -1013,6 +1028,7 @@ function renderPreview(){
     params +
     counterToggle +
     stopwatchToggle +
+    '<div style="margin-bottom:16px;"><div class="overview-title">Schlagwörter (optional)</div>'+tagPickerHtml(w.tags||[], 'w')+'</div>' +
     '<div id="exList">'+exCards+'</div>' +
     '<button class="add-ex-btn" data-action="addEx">＋ Übung hinzufügen</button>' +
     '<button class="primary-btn" data-action="startTraining">Training starten</button>' +
@@ -1594,6 +1610,82 @@ function renderSummary(){
   '</main>';
 }
 
+/* ---------- Schlagwörter & Suche ---------- */
+var TAGS_KEY = 'whiteboard_tags_v1';
+function normTag(t){ return String(t||'').replace(/\s+/g,' ').trim().slice(0,30); }
+function stripDia(x){
+  if(!x) return x;
+  var r = x.normalize ? x.normalize('NFD').replace(/[\u0300-\u036f]/g,'') : x;
+  return r.replace(/ae/g,'a').replace(/oe/g,'o').replace(/ue/g,'u');   // Brust/Rücken: "ruecken" und "rucken" finden beide "Rücken"
+}
+function loadTagList(){ try{ return JSON.parse(localStorage.getItem(TAGS_KEY) || '[]'); }catch(e){ return []; } }
+function rememberTag(tag){
+  try{
+    var list = loadTagList();
+    if(!list.some(function(x){ return x.toLowerCase()===tag.toLowerCase(); })){
+      list.push(tag);
+      localStorage.setItem(TAGS_KEY, JSON.stringify(list));
+    }
+  }catch(e){}
+}
+function entryTags(e){ return (e && e.workout && e.workout.tags) || []; }
+function getKnownTags(){
+  var seen = {}, out = [];
+  function add(t){ var k = String(t).toLowerCase(); if(t && !seen[k]){ seen[k] = 1; out.push(t); } }
+  loadTagList().forEach(add);
+  loadArchive().forEach(function(e){ entryTags(e).forEach(add); });
+  if(state.workout && state.workout.tags) state.workout.tags.forEach(add);
+  return out.sort(function(a,b){ return a.localeCompare(b,'de'); });
+}
+function tagsAdd(arr, tag){ if(!arr.some(function(x){ return x.toLowerCase()===tag.toLowerCase(); })) arr.push(tag); }
+function tagsRemove(arr, tag){
+  for(var i=arr.length-1;i>=0;i--){ if(arr[i].toLowerCase()===tag.toLowerCase()) arr.splice(i,1); }
+}
+function tagPickerHtml(selected, ctx){
+  var known = getKnownTags(), sel = {};
+  selected.forEach(function(t){ sel[t.toLowerCase()] = 1; });
+  var chips = selected.map(function(t){
+    return '<button class="tag-chip on" data-action="tagRemove" data-ctx="'+ctx+'" data-tag="'+esc(t)+'">'+esc(t)+' ✕</button>';
+  }).join('');
+  var sugg = known.filter(function(t){ return !sel[t.toLowerCase()]; }).map(function(t){
+    return '<button class="tag-chip" data-action="tagAdd" data-ctx="'+ctx+'" data-tag="'+esc(t)+'">＋ '+esc(t)+'</button>';
+  }).join('');
+  return '<div class="tag-picker">' +
+    (chips ? '<div class="tag-line">'+chips+'</div>' : '') +
+    (sugg ? '<div class="tag-line">'+sugg+'</div>' : '') +
+    '<div class="tag-input-row"><input type="text" id="tagInput" maxlength="30" placeholder="Neues Schlagwort">' +
+    '<button class="ghost-btn" data-action="tagAdd" data-ctx="'+ctx+'" data-from="input">Hinzufügen</button></div>' +
+  '</div>';
+}
+function applyTag(ctx, op, tag){
+  if(ctx==='w'){
+    syncPreviewFromDOM();
+    var w = state.workout; w.tags = w.tags || [];
+    if(op==='add'){ tagsAdd(w.tags, tag); rememberTag(tag); } else tagsRemove(w.tags, tag);
+  } else if(ctx.indexOf('e:')===0){
+    var id = parseInt(ctx.slice(2),10);
+    var entry = loadArchive().filter(function(e){ return e.id===id; })[0];
+    if(!entry) return;
+    entry.workout.tags = entry.workout.tags || [];
+    if(op==='add'){ tagsAdd(entry.workout.tags, tag); rememberTag(tag); } else tagsRemove(entry.workout.tags, tag);
+    updateArchiveEntry(entry);
+  }
+  render();
+  var inp = document.getElementById('tagInput');
+  if(inp && op==='add') inp.focus();
+}
+function entryHaystack(e){
+  var d = new Date(e.date), w = e.workout, parts = [];
+  var dd = ('0'+d.getDate()).slice(-2), mm = ('0'+(d.getMonth()+1)).slice(-2), yy = d.getFullYear();
+  parts.push(dd+'.'+mm+'.'+yy, d.getDate()+'.'+(d.getMonth()+1)+'.', yy+'-'+mm+'-'+dd);
+  parts.push(d.toLocaleDateString('de-DE',{weekday:'long'}), d.toLocaleDateString('de-DE',{month:'long'}));
+  parts.push(typeText(w), TYPE_LABELS[w.type]||'', e.planned ? 'geplant' : 'absolviert');
+  entryTags(e).forEach(function(t){ parts.push(t); });
+  w.exercises.forEach(function(x){ parts.push(x.name); });
+  if(e.result) parts.push(e.result);
+  return stripDia(parts.join(' | ').toLowerCase());
+}
+
 /* ---------- Archive screen ---------- */
 function fmtEx(e){
   var parts = [];
@@ -1640,6 +1732,7 @@ function renderEdit(){
   header('Training bearbeiten','goto:archive') +
   '<main>' +
     '<div class="hint" style="margin-bottom:16px;">Trage ein, was du tatsächlich gemacht hast. Der ursprüngliche Plan bleibt gespeichert und wird im Archiv gegenübergestellt. Die absolvierten Werte sind der Startpunkt, wenn du das Workout erneut startest.</div>' +
+    '<div style="margin-bottom:16px;"><div class="overview-title">Schlagwörter (optional)</div>'+tagPickerHtml(w.tags||[], 'w')+'</div>' +
     '<div id="exList">'+exCardsHtml(w)+'</div>' +
     '<button class="add-ex-btn" data-action="addEx">＋ Übung hinzufügen</button>' +
     '<div class="param-field" style="margin:6px 0 14px;"><label>Ergebnis (optional anpassen)</label><input type="text" id="e_result" value="'+esc(state.editResult||'')+'" style="width:100%;padding:10px;font-size:15px;"></div>' +
@@ -1656,6 +1749,16 @@ function renderArchiveEntry(entry){
   return '' +
   '<div class="arch-item"'+(planned ? ' style="border-color:var(--accent);"' : '')+'>' +
     '<div class="arch-top"><div><span class="arch-type">'+esc(typeText(w))+'</span><br><span class="arch-date">'+(planned?'gespeichert am ':'')+dateStr+(entry.image?' · 📷 mit Anleitung':'')+'</span></div></div>' +
+    (function(){
+      var tags = entryTags(entry);
+      var row = '<div class="tag-row">' + tags.map(function(t){
+        return '<button class="tag-chip" data-action="archiveTag" data-tag="'+esc(t)+'">#'+esc(t)+'</button>';
+      }).join('') + '<button class="tag-add" data-action="toggleTagEdit" data-id="'+entry.id+'">'+(tags.length ? '🏷 ändern' : '＋ Schlagwort')+'</button></div>';
+      if(state.tagEditId===entry.id){
+        row += '<div class="tag-panel">'+tagPickerHtml(tags, 'e:'+entry.id)+'<button class="ghost-btn" style="margin-top:10px;" data-action="toggleTagEdit" data-id="'+entry.id+'">Fertig</button></div>';
+      }
+      return row;
+    })() +
     (!planned && entry.plan ? (function(){
         var changed = diffRows(entry).some(function(r){ return r.changed; });
         return '<div style="margin-top:8px;"><span class="arch-tag'+(changed?' diff':'')+'">'+(changed ? 'Abweichung vom Plan' : 'wie geplant')+'</span></div>' + renderDiff(entry);
@@ -1668,29 +1771,82 @@ function renderArchiveEntry(entry){
     '</div>' +
   '</div>';
 }
-function renderArchive(){
-  var arr = loadArchive();
-  var content;
-  if(arr.length===0){
-    content = '<div class="empty-state"><div class="emoji">🗂️</div>Noch keine Workouts im Archiv.<br>Trag ein Workout auf dem Notizzettel ein – du kannst es direkt starten oder für später speichern.</div>';
+function renderArchiveList(){
+  var all = loadArchive();
+  if(all.length===0){
+    return '<div class="empty-state"><div class="emoji">🗂️</div>Noch keine Workouts im Archiv.<br>Trag ein Workout auf dem Notizzettel ein – du kannst es direkt starten oder für später speichern.</div>';
+  }
+  var q = stripDia((state.archiveQuery||'').toLowerCase()).split(/\s+/).filter(Boolean);
+  var sel = state.archiveTags || [];
+  var arr = all.filter(function(e){
+    if(sel.length){
+      var et = entryTags(e).map(function(x){ return x.toLowerCase(); });
+      if(!sel.every(function(t){ return et.indexOf(t.toLowerCase())>=0; })) return false;
+    }
+    if(q.length){
+      var h = entryHaystack(e);
+      if(!q.every(function(tk){ return h.indexOf(tk)>=0; })) return false;
+    }
+    return true;
+  });
+  if(arr.length===0) return '<div class="empty-state"><div class="emoji">🔍</div>Keine Treffer.</div>';
+  var out = '<div class="arch-count">'+arr.length+' Training'+(arr.length===1?'':'s')+'</div>';
+  if(state.archiveGroup){
+    var groups = {}, order = [];
+    arr.forEach(function(e){
+      var ts = entryTags(e);
+      if(!ts.length) ts = ['\u0000'];
+      ts.forEach(function(t){
+        var k = t.toLowerCase();
+        if(!groups[k]){ groups[k] = { name:t, items:[] }; order.push(k); }
+        groups[k].items.push(e);
+      });
+    });
+    order.sort(function(a,b){
+      if(a==='\u0000') return 1; if(b==='\u0000') return -1;
+      return groups[a].name.localeCompare(groups[b].name,'de');
+    });
+    order.forEach(function(k){
+      out += '<div class="overview-title" style="margin:16px 0 8px;">'+(k==='\u0000' ? 'Ohne Schlagwort' : '🏷 '+esc(groups[k].name))+' · '+groups[k].items.length+'</div>' + groups[k].items.map(renderArchiveEntry).join('');
+    });
   } else {
     var planned = arr.filter(function(e){ return e.planned; });
     var done = arr.filter(function(e){ return !e.planned; });
-    content = '';
     if(planned.length){
-      content += '<div class="overview-title" style="margin:6px 0 8px;">📌 Geplant</div>' + planned.map(renderArchiveEntry).join('');
-      if(done.length) content += '<div class="overview-title" style="margin:18px 0 8px;">Absolviert</div>';
+      out += '<div class="overview-title" style="margin:6px 0 8px;">📌 Geplant</div>' + planned.map(renderArchiveEntry).join('');
+      if(done.length) out += '<div class="overview-title" style="margin:18px 0 8px;">Absolviert</div>';
     }
-    content += done.map(renderArchiveEntry).join('');
+    out += done.map(renderArchiveEntry).join('');
   }
+  return out;
+}
+function renderArchive(){
+  var all = loadArchive();
+  var counts = {}, names = {};
+  all.forEach(function(e){ entryTags(e).forEach(function(t){ var k = t.toLowerCase(); counts[k] = (counts[k]||0)+1; names[k] = names[k] || t; }); });
+  var keys = Object.keys(names).sort(function(a,b){ return names[a].localeCompare(names[b],'de'); });
+  var sel = (state.archiveTags||[]).map(function(t){ return t.toLowerCase(); });
+  var chips = '';
+  if(keys.length){
+    chips = '<div class="arch-filter"><button class="type-chip'+(sel.length?'':' active')+'" data-action="archiveTagsClear">Alle</button>' +
+      keys.map(function(k){
+        return '<button class="type-chip'+(sel.indexOf(k)>=0?' active':'')+'" data-action="archiveTag" data-tag="'+esc(names[k])+'">'+esc(names[k])+' · '+counts[k]+'</button>';
+      }).join('') + '</div>';
+  }
+  var toolbar = all.length ? (
+    '<input type="search" id="archSearch" class="arch-search" placeholder="Suchen: Datum, Tag, Schlagwort …" value="'+esc(state.archiveQuery||'')+'" autocomplete="off">' +
+    chips +
+    '<div class="arch-bar"><button class="type-chip'+(state.archiveGroup?' active':'')+'" data-action="toggleGroup">🏷 Nach Schlagwort gruppieren</button></div>'
+  ) : '';
   var backup = '' +
     '<input type="file" id="importInput" accept=".json,application/json,text/plain" style="display:none;">' +
+    '<div style="margin-top:26px; padding-top:18px; border-top:1px solid var(--line);">' +
     '<div style="display:flex; gap:8px; margin-bottom:6px;">' +
       '<button class="secondary-btn" style="flex:1; padding:12px 6px; font-size:13.5px;" data-action="exportArchive">⬇️ Backup exportieren</button>' +
       '<label for="importInput" class="secondary-btn" style="flex:1; padding:12px 6px; font-size:13.5px; text-align:center; cursor:pointer;">⬆️ Backup importieren</label>' +
     '</div>' +
-    '<div style="font-size:12px; color:var(--chalk-faint); margin-bottom:16px; line-height:1.5;">Sichert dein Archiv als Datei, z. B. vor einem neuen Lesezeichen oder Gerätewechsel.</div>';
-  return '<div class="topbar"><div class="brand"><span class="chalk-dot"></span><h1>Archiv</h1></div></div><main>'+backup+content+'</main>';
+    '<div style="font-size:12px; color:var(--chalk-faint); line-height:1.5;">Sichert dein Archiv als Datei, z. B. vor einem neuen Lesezeichen oder Gerätewechsel.</div></div>';
+  return '<div class="topbar"><div class="brand"><span class="chalk-dot"></span><h1>Archiv</h1></div></div><main>'+toolbar+'<div id="archList">'+renderArchiveList()+'</div>'+backup+'</main>';
 }
 
 /* ---------- Event delegation ---------- */
@@ -1774,6 +1930,30 @@ app.addEventListener('click', function(e){
   else if(action==='cancelTraining') cancelTraining();
   else if(action==='restartFresh') restartFresh();
   else if(action==='finishManually') finishManually();
+  else if(action==='tagAdd' || action==='tagRemove'){
+    var tctx = t.getAttribute('data-ctx');
+    var ttag = t.getAttribute('data-tag');
+    if(action==='tagAdd' && t.getAttribute('data-from')==='input'){
+      var tinp = document.getElementById('tagInput');
+      ttag = tinp ? tinp.value : '';
+    }
+    ttag = normTag(ttag);
+    if(ttag) applyTag(tctx, action==='tagAdd' ? 'add' : 'remove', ttag);
+  }
+  else if(action==='toggleTagEdit'){
+    var teid = parseInt(t.getAttribute('data-id'),10);
+    state.tagEditId = (state.tagEditId===teid) ? null : teid;
+    render();
+  }
+  else if(action==='archiveTag'){
+    var atag = t.getAttribute('data-tag');
+    state.archiveTags = state.archiveTags || [];
+    if(state.archiveTags.some(function(x){ return x.toLowerCase()===atag.toLowerCase(); })) tagsRemove(state.archiveTags, atag);
+    else state.archiveTags.push(atag);
+    render();
+  }
+  else if(action==='archiveTagsClear'){ state.archiveTags = []; render(); }
+  else if(action==='toggleGroup'){ state.archiveGroup = !state.archiveGroup; render(); }
   else if(action==='editArchive'){
     var eid = parseInt(t.getAttribute('data-id'),10);
     var eentry = loadArchive().filter(function(e){ return e.id===eid; })[0];
@@ -1878,6 +2058,21 @@ app.addEventListener('change', function(e){
   } else if(e.target && e.target.id==='importInput'){
     importArchiveFile(e.target.files && e.target.files[0]);
     e.target.value = '';
+  }
+});
+
+app.addEventListener('input', function(e){
+  if(e.target && e.target.id==='archSearch'){
+    state.archiveQuery = e.target.value;
+    var box = document.getElementById('archList');
+    if(box) box.innerHTML = renderArchiveList();
+  }
+});
+app.addEventListener('keydown', function(e){
+  if(e.key==='Enter' && e.target && e.target.id==='tagInput'){
+    e.preventDefault();
+    var b = e.target.parentNode.querySelector('[data-from="input"]');
+    if(b) b.click();
   }
 });
 
