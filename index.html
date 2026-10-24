@@ -266,6 +266,20 @@
   .img-bar button{flex:1;}
   .img-scroll{flex:1; overflow:auto; -webkit-overflow-scrolling:touch; padding:10px;}
   .img-scroll img{display:block; max-width:none; height:auto;}
+  .g-intro{color:var(--chalk-dim); font-size:14px; line-height:1.6; margin-bottom:14px;}
+  .g-sec{border:1px solid var(--line); border-radius:14px; background:var(--bg-raised); margin-bottom:10px;}
+  .g-sec summary{cursor:pointer; list-style:none; padding:15px 16px; font-weight:600; font-size:15.5px; display:flex; justify-content:space-between; align-items:center; gap:10px;}
+  .g-sec summary::-webkit-details-marker{display:none;}
+  .g-sec summary::after{content:"＋"; color:var(--accent); flex:0 0 auto;}
+  .g-sec[open] summary::after{content:"－";}
+  .g-body{padding:0 16px 16px; font-size:14px; line-height:1.65; color:var(--chalk-dim);}
+  .g-body p{margin:0 0 10px;}
+  .g-body b{color:var(--chalk);}
+  .g-body ul,.g-body ol{margin:0 0 10px; padding-left:20px;}
+  .g-body li{margin-bottom:5px;}
+  .g-body h4{margin:14px 0 4px; font-size:14px; color:var(--chalk); font-family:inherit; font-weight:600;}
+  .g-body code{background:var(--bg); padding:1px 6px; border-radius:6px; color:var(--accent); font-family:'IBM Plex Mono',monospace; font-size:12.5px; white-space:nowrap;}
+  .g-body pre{white-space:pre-wrap; background:var(--bg); padding:10px 12px; border-radius:8px; font-size:12.5px; color:var(--chalk-dim); margin:6px 0 10px; font-family:'IBM Plex Mono',monospace; line-height:1.55;}
   .cancel-link{display:block; text-align:center; margin-top:14px; color:var(--chalk-faint); font-size:13px; background:none; border:none; text-decoration:underline;}
 </style>
 </head>
@@ -697,6 +711,152 @@ function parseExerciseLine(line){
   return { name: name, sets: sets, value: value, unitType: unitType, weight: weight };
 }
 
+/* ---------- Anleitung ---------- */
+function gsec(title, body, open){
+  return '<details class="g-sec"'+(open?' open':'')+'><summary>'+title+'</summary><div class="g-body">'+body+'</div></details>';
+}
+function renderGuide(){
+  var quick = `
+    <ol>
+      <li><b>Workout aufschreiben:</b> Tippe es auf dem Notizzettel ein, eine Übung pro Zeile. Oder tippe oben auf ein bekanntes Workout wie <code>Murph</code> oder <code>Cindy</code>.</li>
+      <li><b>„Workout erstellen"</b> tippen. In der Vorschau siehst du, was die App erkannt hat, und kannst alles korrigieren.</li>
+      <li><b>„Training starten"</b> tippen. Oder „Im Archiv speichern (für später)", wenn du das Workout nur planen willst.</li>
+      <li><b>Trainieren:</b> Mit <b>Erledigt</b> geht es zur nächsten Übung. Bei Timer-Workouts (EMOM, Tabata …) läuft die Zeit von selbst. Am Ende wird das Training automatisch im Archiv gespeichert.</li>
+    </ol>
+    <p>Ein kleines Beispiel zum Ausprobieren:</p>
+    <pre>Kniebeugen 4x10 60kg
+15 Liegestütze
+Klimmzüge 3x8</pre>
+    <p>Das ist ein klassisches Training ohne Timer: Satz für Satz abhaken.</p>`;
+
+  var input = `
+    <h4>Typ-Zeile (erste Zeile, optional)</h4>
+    <p>Sie sagt der App, wie das Training abläuft. Ohne Typ-Zeile entsteht ein <b>klassisches Training</b> ohne Timer.</p>
+    <ul>
+      <li><code>ZIRKEL 4 Runden</code> – Übungen der Reihe nach, 4 Durchgänge</li>
+      <li><code>EMOM25</code> – 25 Runden à 60 Sekunden (andere Länge z. B. <code>EMOM25/45</code> = 45 Sek.)</li>
+      <li><code>E6MOM 4</code> – alle 6 Minuten ein Block aus mehreren Übungen, 4 Blöcke (auch <code>E3MOM</code>, <code>E10MOM</code>; oder mit Gesamtzeit: <code>E6MOM 24min</code>)</li>
+      <li><code>AMRAP15</code> – 15 Minuten, so viele Runden wie möglich</li>
+      <li><code>TABATA</code> – 8 Runden à 20 Sek. Belastung / 10 Sek. Pause (eigene Werte: <code>TABATA10/30/15</code> = 10 Runden, 30/15 Sek.)</li>
+      <li><code>FOR TIME</code> – auf Zeit, die Stoppuhr zählt hoch</li>
+    </ul>
+    <h4>Übungszeilen</h4>
+    <p>Pro Zeile: <b>Name</b> plus optional Zahlen. Die Zahl darf vor oder nach dem Namen stehen.</p>
+    <ul>
+      <li><code>3x10</code> – 3 Sätze à 10 Wiederholungen</li>
+      <li><code>3 Sätze</code> und <code>10 Wiederholungen</code> – ausgeschrieben</li>
+      <li><code>60kg</code> – Gewicht</li>
+      <li><code>500m</code> – Strecke in Metern</li>
+      <li><code>40s</code> oder <code>40sek</code> – Dauer in Sekunden</li>
+      <li><code>15 Burpees</code> – einfach eine Zahl = Wiederholungen</li>
+    </ul>
+    <pre>Bankdrücken 4x8 80kg
+10 Klimmzüge
+Rudern 500m
+Plank 40s</pre>
+    <p>Die App rät aus deinem Text. Prüfe deshalb in der Vorschau, ob alles richtig erkannt wurde. Weitere Beispiele findest du unter dem Notizzettel bei „Beispiele &amp; Formate".</p>`;
+
+  var known = `
+    <p>Tippst du nur den Namen eines bekannten Workouts in den Notizzettel, lädt die App es komplett. Oder tippe oben auf dem Notizzettel auf den passenden Button.</p>
+    <p>Hinterlegt sind: <b>Murph, Cindy, Mary, Angie, Grace, Isabel, Karen, Jackie, Helen, Barbara, Nancy, DT</b>.</p>
+    <p>In der Vorschau steht bei manchen ein Hinweis, z. B. zum üblichen Gewicht. Das Gewicht lässt du leer und trägst es selbst ein.</p>`;
+
+  var image = `
+    <ol>
+      <li>Auf dem Notizzettel „📷 Bild / Screenshot hochladen" tippen und ein Bild wählen oder aufnehmen.</li>
+      <li>„Text aus Bild erkennen" tippen. Der erkannte Text landet im Notizzettel. Beim ersten Mal wird dafür ein Sprachpaket nachgeladen, das dauert einen Moment und braucht Internet.</li>
+      <li>Text prüfen und korrigieren. Ergänze bei Bedarf oben die Typ-Zeile (z. B. <code>EMOM12</code>).</li>
+      <li>„Workout erstellen" tippen.</li>
+    </ol>
+    <p>Das Bild bleibt im Training abrufbar: Tippe dort auf „📷 Anleitung anzeigen". Mit „Vergrößern" kannst du hineinzoomen und scrollen. Der Timer läuft dabei weiter.</p>
+    <p>Bei komplizierten Screenshots erkennt die Texterkennung oft nur Teile. Das Original hast du im Training trotzdem zur Hand.</p>`;
+
+  var types = `
+    <h4>Klassisch</h4>
+    <p>Keine Typ-Zeile. Du siehst die aktuelle Übung mit Satz, Wiederholungen und Gewicht. <b>Erledigt</b> = ein Satz fertig. Nach dem letzten Satz kommt die nächste Übung. Eine Stoppuhr ist optional (Häkchen in der Vorschau).</p>
+    <h4>Zirkel</h4>
+    <p>Die Übungen laufen der Reihe nach, danach beginnt die nächste Runde bei Übung 1. Oben steht „Runde 2 / 4". Sätze pro Übung werden ignoriert. Stoppuhr optional.</p>
+    <h4>EMOM</h4>
+    <p>Jede Runde dauert z. B. 60 Sekunden, in jeder Runde ist eine Übung dran. Mehrere Übungen wechseln reihum. Der Timer startet automatisch und schaltet die Runde selbst weiter. Mit „Weiter" überspringst du eine Runde, mit „Zurück" gehst du eine Runde zurück.</p>
+    <h4>E6MOM (Block-EMOM)</h4>
+    <p>Alle 6 Minuten (oder 2, 3, 10 …) wartet ein Block aus mehreren Übungen. Du gehst ihn mit <b>Erledigt</b> durch. Danach heißt es „Block geschafft – Pause", bis der Timer abläuft. Dann startet der nächste Block.</p>
+    <h4>AMRAP</h4>
+    <p>Ein Countdown läuft. Mit <b>Erledigt</b> hakst du eine Übung nach der anderen ab. Nach der letzten zählt eine Runde, dann geht es von vorn los. Bei 0 endet das Training automatisch, das Ergebnis lautet z. B. „5 Runden + 2 Übungen".</p>
+    <h4>Tabata</h4>
+    <p>Abwechselnd Belastung und Pause, mit Rundenzähler. Die Übungen wechseln pro Runde. Mit „Weiter" überspringst du eine Phase.</p>
+    <h4>For Time</h4>
+    <p>Die Stoppuhr zählt hoch. Du hakst Satz für Satz ab. Mit dem letzten Satz endet das Training, die Zeit steht im Archiv.</p>`;
+
+  var preview = `
+    <p>Nach „Workout erstellen" prüfst du hier alles, bevor es losgeht.</p>
+    <ul>
+      <li><b>Typ wechseln:</b> Tippe oben auf einen anderen Typ (Klassisch, Zirkel, EMOM, Block-EMOM, AMRAP, Tabata, For Time). Runden, Minuten und Intervalle stellst du darunter ein.</li>
+      <li><b>Übungen anpassen:</b> Name, Sätze, Wert, Einheit (Wiederholungen / Meter / Sekunden) und Gewicht. Mit ✕ entfernst du eine Übung, mit „＋ Übung hinzufügen" ergänzt du eine.</li>
+      <li><b>Teilmengen-Zähler</b> (Häkchen): Für große Zahlen wie bei Murph. Im Training trägst du zwischendurch ein, wie viele du schon geschafft hast. Die App zieht sie von der Zielzahl ab und springt bei 0 automatisch weiter. Gilt für klassische und For-Time-Trainings.</li>
+      <li><b>Stoppuhr</b> (Häkchen, bei Klassisch und Zirkel): Die Gesamtzeit läuft mit. Bei Timer-Workouts läuft die Zeit immer automatisch.</li>
+      <li><b>„Training starten"</b> beginnt sofort. <b>„Im Archiv speichern (für später)"</b> legt das Workout unter „Geplant" ab, z. B. am Vortag.</li>
+    </ul>`;
+
+  var train = `
+    <ul>
+      <li><b>Anzeige:</b> Übungsname und Wiederholungszahl stehen groß in der Mitte, rechts daneben das Gewicht. Oben läuft die Zeit, darunter ein Fortschrittsbalken. „Als Nächstes" zeigt dir die folgende Übung, darunter siehst du die Gesamtübersicht. Sie scrollt von selbst zur aktuellen Übung.</li>
+      <li><b>Erledigt / Zurück:</b> Mit „Erledigt" geht es weiter, mit „Zurück" korrigierst du einen Fehltipp.</li>
+      <li><b>Oben rechts:</b> <b>Abbrechen</b> verwirft das Training, dein Text bleibt im Notizzettel. <b>Neustart</b> verwirft es und leert den Notizzettel. <b>Erledigt</b> beendet das Training sofort und speichert es im Archiv, auch wenn du nicht fertig bist.</li>
+      <li><b>Töne:</b> Bei 3, 2, 1 ertönt jeweils ein kurzer Ton, beim Wechsel ein langer. Läuft nebenbei Musik, darf sie weiterlaufen.</li>
+      <li><b>Bildschirm:</b> Er bleibt während des Trainings an. Wechselst du kurz in eine andere App, läuft die Zeit korrekt weiter und holt beim Zurückkommen alles auf.</li>
+      <li><b>Anleitung als Bild:</b> Hast du ein Bild hochgeladen, öffnest du es mit „📷 Anleitung anzeigen".</li>
+    </ul>`;
+
+  var archive = `
+    <p>Unten in der Leiste wechselst du zwischen <b>Notizzettel</b> und <b>Archiv</b>.</p>
+    <ul>
+      <li><b>📌 Geplant:</b> Workouts, die du für später gespeichert hast. „▶ Starten" öffnet die Vorschau, dort kannst du noch Änderungen machen. Nach dem Training wird der geplante Eintrag durch das absolvierte Workout ersetzt.</li>
+      <li><b>Absolviert:</b> Alle abgeschlossenen Trainings mit Datum und Ergebnis. „↻ Erneut starten" wiederholt ein Training.</li>
+      <li><b>✎ Bearbeiten:</b> Trage nachträglich ein, was du tatsächlich gemacht hast, z. B. ein anderes Gewicht. Diese Werte sind der Startpunkt, wenn du das Workout wieder startest.</li>
+      <li><b>Geplant vs. absolviert:</b> Der ursprüngliche Plan bleibt dauerhaft gespeichert. Das Archiv zeigt beides untereinander und markiert Abweichungen mit „Abweichung vom Plan".</li>
+      <li><b>Löschen</b> entfernt einen Eintrag endgültig.</li>
+    </ul>`;
+
+  var backup = `
+    <h4>Auf dem Home-Bildschirm</h4>
+    <ul>
+      <li><b>iPhone (Safari):</b> Teilen-Symbol → „Zum Home-Bildschirm".</li>
+      <li><b>Android (Chrome):</b> Menü (⋮) → „Zum Startbildschirm hinzufügen".</li>
+    </ul>
+    <h4>Backup deines Archivs</h4>
+    <p>Dein Archiv liegt nur auf deinem Gerät im Speicher des Browsers. Auf dem iPhone hat das Home-Bildschirm-Symbol einen <b>eigenen Speicher</b>, getrennt von Safari. Lege ein Lesezeichen deshalb nicht einfach neu an, sonst startest du mit leerem Archiv.</p>
+    <ul>
+      <li><b>⬇️ Backup exportieren</b> (im Archiv oben) speichert alle Einträge als Datei.</li>
+      <li><b>⬆️ Backup importieren</b> spielt sie wieder ein. Doppelte Einträge werden nicht angelegt.</li>
+    </ul>
+    <p>Mach ab und zu ein Backup, vor allem vor einem Gerätewechsel oder wenn du Browserdaten löschst.</p>`;
+
+  var help = `
+    <ul>
+      <li><b>Kein Ton:</b> Stumm-Schalter am iPhone aus, Lautstärke prüfen. Die Töne sollen sich mit Musik mischen, das klappt ab iOS 16.4. Starte das Training immer mit einem Tipp, damit der Ton freigeschaltet ist.</li>
+      <li><b>Bildschirm geht trotzdem aus:</b> Die Displaysperre-Verhinderung hängt vom System ab. Im Home-Bildschirm-Symbol funktioniert sie auf dem iPhone erst bei neueren iOS-Versionen, in Safari selbst früher.</li>
+      <li><b>Übung falsch erkannt:</b> In der Vorschau korrigieren. Zahlen und Einheiten kannst du dort einzeln ändern.</li>
+      <li><b>Texterkennung funktioniert nicht:</b> Sie braucht Internet. Prüfe die Verbindung und versuche es noch einmal.</li>
+      <li><b>Speicher voll:</b> Lösche alte Einträge (mit Bildern geplante Workouts brauchen viel Platz) oder exportiere vorher ein Backup.</li>
+    </ul>`;
+
+  return '' +
+  header('Anleitung','goto:note') +
+  '<main>' +
+    '<div class="g-intro">Whiteboard zeigt dir dein selbst geschriebenes Workout übersichtlich an, führt dich durch das Training und archiviert es. Tippe auf einen Abschnitt, um ihn zu öffnen.</div>' +
+    gsec('Schnellstart in 4 Schritten', quick, true) +
+    gsec('Workout eingeben', input) +
+    gsec('Bekannte Workouts (Murph, Cindy …)', known) +
+    gsec('Bild / Screenshot hochladen', image) +
+    gsec('Die Workout-Typen', types) +
+    gsec('Die Vorschau', preview) +
+    gsec('Im Training', train) +
+    gsec('Archiv, Planen & Bearbeiten', archive) +
+    gsec('Home-Bildschirm & Backup', backup) +
+    gsec('Hilfe bei Problemen', help) +
+  '</main>';
+}
+
 /* ---------- Render root ---------- */
 function render(){
   var html = '';
@@ -706,6 +866,7 @@ function render(){
   else if(state.screen==='summary') html = renderSummary();
   else if(state.screen==='archive') html = renderArchive();
   else if(state.screen==='editEntry') html = renderEdit();
+  else if(state.screen==='guide') html = renderGuide();
 
   var showNav = (state.screen==='note' || state.screen==='archive');
   app.className = (state.screen==='training') ? 'training' : '';
@@ -747,7 +908,7 @@ function renderNote(){
     return '<button class="type-chip" data-action="loadNamed" data-name="'+esc(name)+'">'+esc(name)+'</button>';
   }).join('');
   return '' +
-  '<div class="topbar"><div class="brand"><span class="chalk-dot"></span><h1>Whiteboard</h1></div></div>' +
+  '<div class="topbar"><div class="brand"><span class="chalk-dot"></span><h1>Whiteboard</h1></div><button class="pill" data-action="goto:guide">? Anleitung</button></div>' +
   '<main class="note-wrap">' +
     '<div class="overview-title" style="margin-bottom:8px;">Bekannte Workouts</div>' +
     '<div class="type-select-row" style="margin-bottom:14px;">'+quickChips+'</div>' +
@@ -1565,6 +1726,7 @@ app.addEventListener('click', function(e){
     state.screen = action.split(':')[1];
     state.plannedId = null;
     render();
+    window.scrollTo(0,0);
   }
   else if(action==='goto'){
     state.screen = t.getAttribute('data-screen');
