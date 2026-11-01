@@ -342,6 +342,12 @@
   .prog-row{display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
   .prog-row .pv{font-family:'IBM Plex Mono',monospace; text-align:right;}
   .prog-row small{display:block; color:var(--chalk-faint); font-size:11.5px;}
+  .set-sum{font-size:12.5px; color:var(--accent); margin-top:8px;}
+  .set-toggle{margin-top:8px; width:100%;}
+  .set-rows{margin-top:10px; display:flex; flex-direction:column; gap:6px;}
+  .sr{display:grid; grid-template-columns:56px 1fr 1fr; gap:8px; align-items:center; font-size:13px; color:var(--chalk-faint);}
+  .sr input{width:100%; padding:8px; font-size:14px; text-align:center;}
+  .le-scope{display:flex; gap:8px; margin-bottom:12px;}
   .cancel-link{display:block; text-align:center; margin-top:14px; color:var(--chalk-faint); font-size:13px; background:none; border:none; text-decoration:underline;}
 </style>
 </head>
@@ -856,7 +862,7 @@ Plank 40s</pre>
     <p>Nach „Workout erstellen" prüfst du hier alles, bevor es losgeht.</p>
     <ul>
       <li><b>Typ wechseln:</b> Tippe oben auf einen anderen Typ (Klassisch, Zirkel, EMOM, Block-EMOM, AMRAP, Tabata, For Time). Runden, Minuten und Intervalle stellst du darunter ein.</li>
-      <li><b>Übungen anpassen:</b> Name, Sätze, Wert, Einheit (Wiederholungen / Meter / Sekunden) und Gewicht. Mit ✕ entfernst du eine Übung, mit „＋ Übung hinzufügen" ergänzt du eine.</li>
+      <li><b>Übungen anpassen:</b> Name, Sätze, Wert, Einheit (Wiederholungen / Meter / Sekunden) und Gewicht. Bei mehreren Sätzen öffnet „⇅ Sätze einzeln anpassen" eine Liste, in der du Wiederholungen und Gewicht pro Satz einträgst (z. B. 12 / 10 / 8). Das geht auch nachträglich im Archiv über „✎ Bearbeiten". Mit ✕ entfernst du eine Übung, mit „＋ Übung hinzufügen" ergänzt du eine.</li>
       <li><b>Teilmengen-Zähler</b> (Häkchen): Für große Zahlen wie bei Murph. Im Training trägst du zwischendurch ein, wie viele du schon geschafft hast. Die App zieht sie von der Zielzahl ab und springt bei 0 automatisch weiter. Gilt für klassische und For-Time-Trainings.</li>
       <li><b>Stoppuhr</b> (Häkchen, bei Klassisch und Zirkel): Die Gesamtzeit läuft mit. Bei Timer-Workouts läuft die Zeit immer automatisch.</li>
       <li><b>Schlagwörter</b> (optional): Vergib Begriffe wie „Brust“ oder „Oberkörper“. Tippe einen Begriff aus der Liste an oder schreibe einen neuen. Neue Begriffe landen automatisch in der Liste.</li>
@@ -868,7 +874,7 @@ Plank 40s</pre>
     <ul>
       <li><b>Anzeige:</b> Übungsname und Wiederholungszahl stehen groß in der Mitte, rechts daneben das Gewicht. Oben läuft die Zeit, darunter ein Fortschrittsbalken. „Als Nächstes" zeigt dir die folgende Übung, darunter siehst du die Gesamtübersicht. Sie scrollt von selbst zur aktuellen Übung.</li>
       <li><b>Erledigt / Zurück:</b> Mit „Erledigt" geht es weiter, mit „Zurück" korrigierst du einen Fehltipp.</li>
-      <li><b>Gewicht / Wdh. anpassen:</b> Unter der aktuellen Übung tippst du auf „✎ Gewicht / Wdh. anpassen". Mit − und + oder direkt per Eingabe änderst du die Werte, „Übernehmen" speichert sie. Die Änderung gilt ab jetzt für diese Übung (alle weiteren Sätze und Runden) und wird sofort als Abweichung vom Plan festgehalten. Darunter siehst du „Plan war …" und „Zuletzt …".</li>
+      <li><b>Gewicht / Wdh. anpassen:</b> Unter der aktuellen Übung tippst du auf „✎ Gewicht / Wdh. anpassen". Mit − und + oder direkt per Eingabe änderst du die Werte, „Übernehmen" speichert sie. Bei klassischen Trainings mit mehreren Sätzen wählst du, ob die Änderung <b>nur für diesen Satz</b> oder für <b>diesen Satz und alle weiteren</b> gilt. Frühere Sätze bleiben, wie sie waren. In allen anderen Typen gilt sie ab jetzt für die Übung. Die Abweichung wird sofort als Abweichung vom Plan festgehalten. Darunter siehst du „Plan war …" und „Zuletzt …".</li>
       <li><b>Oben rechts:</b> <b>Abbrechen</b> verwirft das Training, dein Text bleibt im Notizzettel. <b>Neustart</b> verwirft es und leert den Notizzettel. <b>Erledigt</b> beendet das Training sofort und speichert es im Archiv, auch wenn du nicht fertig bist.</li>
       <li><b>Töne:</b> Bei 3, 2, 1 ertönt jeweils ein kurzer Ton, beim Wechsel ein langer. Läuft nebenbei Musik, darf sie weiterlaufen.</li>
       <li><b>Bildschirm:</b> Er bleibt während des Trainings an. Wechselst du kurz in eine andere App, läuft die Zeit korrekt weiter und holt beim Zurückkommen alles auf.</li>
@@ -1012,6 +1018,24 @@ var UNIT_LABELS = { reps:'Wiederholungen', distance:'Meter', time:'Sekunden' };
 
 function exCardsHtml(w, withLast){
   return w.exercises.map(function(ex, i){
+    var setOpen = !!setEditMap()[i];
+    var setBlock = '';
+    if(ex.sets>1){
+      if(!setOpen){
+        setBlock = (ex.setVals ? '<div class="set-sum">Satzwerte: '+esc(fmtEx(ex))+'</div>' : '') +
+          '<button class="ghost-btn set-toggle" data-action="toggleSets" data-idx="'+i+'">⇅ Sätze einzeln '+(ex.setVals ? 'ändern' : 'anpassen')+'</button>';
+      } else {
+        var uLbl = ex.unitType==='distance' ? 'm' : (ex.unitType==='time' ? 's' : 'Wdh.');
+        setBlock = '<div class="set-rows">';
+        for(var k=0;k<ex.sets;k++){
+          var sv = setVal(ex, k+1);
+          setBlock += '<div class="sr"><span>Satz '+(k+1)+'</span>' +
+            '<input type="number" min="0" inputmode="decimal" placeholder="'+uLbl+'" data-idx="'+i+'" data-set="'+k+'" data-sfield="value" value="'+(sv.value!=null?sv.value:'')+'">' +
+            '<input type="number" min="0" step="0.5" inputmode="decimal" placeholder="kg" data-idx="'+i+'" data-set="'+k+'" data-sfield="weight" value="'+(sv.weight!=null?sv.weight:'')+'"></div>';
+        }
+        setBlock += '<button class="ghost-btn set-toggle" data-action="toggleSets" data-idx="'+i+'">Fertig</button></div>';
+      }
+    }
     return '' +
     '<div class="ex-card" data-idx="'+i+'">' +
       '<span class="rownum mono">#'+(i+1)+'</span>' +
@@ -1020,14 +1044,15 @@ function exCardsHtml(w, withLast){
         (withLast!==false ? lastHint(ex.name) : '') +
       '<div class="ex-grid">' +
         '<div class="fld"><label>Sätze</label><input type="number" min="1" data-idx="'+i+'" data-field="sets" value="'+ex.sets+'"></div>' +
-        '<div class="fld"><label>Wert</label><input type="number" min="0" data-idx="'+i+'" data-field="value" value="'+(ex.value!=null?ex.value:'')+'"></div>' +
+        '<div class="fld"><label>Wert</label><input type="number" min="0" data-idx="'+i+'" data-field="value" value="'+(ex.value!=null?ex.value:'')+'"'+(setOpen?' disabled':'')+'></div>' +
         '<div class="fld"><label>Einheit</label><select data-idx="'+i+'" data-field="unitType">' +
           Object.keys(UNIT_LABELS).map(function(u){ return '<option value="'+u+'" '+(ex.unitType===u?'selected':'')+'>'+UNIT_LABELS[u]+'</option>'; }).join('') +
         '</select></div>' +
       '</div>' +
       '<div class="ex-grid" style="margin-top:8px;grid-template-columns:1fr;">' +
-        '<div class="fld"><label>Gewicht (kg, optional)</label><input type="number" min="0" step="0.5" data-idx="'+i+'" data-field="weight" value="'+(ex.weight!=null?ex.weight:'')+'"></div>' +
+        '<div class="fld"><label>Gewicht (kg, optional)</label><input type="number" min="0" step="0.5" data-idx="'+i+'" data-field="weight" value="'+(ex.weight!=null?ex.weight:'')+'"'+(setOpen?' disabled':'')+'></div>' +
       '</div>' +
+      setBlock +
     '</div>';
   }).join('');
 }
@@ -1129,6 +1154,7 @@ function syncPreviewFromDOM(){
     if(tw) w.params.work = Math.max(1, parseInt(tw.value,10)||20);
     if(tre) w.params.rest = Math.max(0, parseInt(tre.value,10)||10);
   }
+  var openMap = (state.setEditFor===w && state.setEdit) ? state.setEdit : {};
   document.querySelectorAll('#exList [data-field]').forEach(function(input){
     var idx = parseInt(input.getAttribute('data-idx'),10);
     var field = input.getAttribute('data-field');
@@ -1136,10 +1162,34 @@ function syncPreviewFromDOM(){
     if(!ex) return;
     if(field==='name') ex.name = input.value.trim() || 'Übung';
     else if(field==='sets') ex.sets = Math.max(1, parseInt(input.value,10)||1);
-    else if(field==='value') ex.value = input.value===''? null : parseFloat(input.value);
-    else if(field==='weight') ex.weight = input.value===''? null : parseFloat(input.value);
+    else if(field==='value'){
+      if(openMap[idx]) return;
+      var nv_ = input.value===''? null : parseFloat(input.value);
+      if(ex.setVals && nv_!==ex.value) delete ex.setVals;
+      ex.value = nv_;
+    }
+    else if(field==='weight'){
+      if(openMap[idx]) return;
+      var nw_ = input.value===''? null : parseFloat(input.value);
+      if(ex.setVals && nw_!==ex.weight) delete ex.setVals;
+      ex.weight = nw_;
+    }
     else if(field==='unitType') ex.unitType = input.value;
   });
+  Object.keys(openMap).forEach(function(k){
+    if(!openMap[k]) return;
+    var exo = w.exercises[k]; if(!exo) return;
+    var rows = document.querySelectorAll('#exList [data-idx="'+k+'"][data-sfield]');
+    if(!rows.length) return;
+    var arr = [];
+    rows.forEach(function(inp){
+      var si = parseInt(inp.getAttribute('data-set'),10), f = inp.getAttribute('data-sfield');
+      arr[si] = arr[si] || { value:null, weight:null };
+      arr[si][f] = inp.value==='' ? null : parseFloat(inp.value);
+    });
+    exo.setVals = arr.filter(Boolean);
+  });
+  w.exercises.forEach(normalizeSetVals);
 }
 
 /* ---------- Training screen ---------- */
@@ -1152,6 +1202,7 @@ function isCountUp(w){
 function startTraining(){
   var w = state.workout;
   state.imageOverlay = false;
+  state.workout.exercises.forEach(normalizeSetVals);
   training = { plan: JSON.parse(JSON.stringify((state.plannedId && state.planBase) ? state.planBase : state.workout)), blockFinished:false, startedAt:Date.now(), ticksDone:0, elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
   resetRemaining();
 
@@ -1172,7 +1223,8 @@ function resetRemaining(){
   var w = state.workout;
   if(!w || !w.counterEnabled || (w.type!=='classic' && w.type!=='fortime')){ training.remainingValue = null; return; }
   var ex = w.exercises[training.currentExerciseIndex];
-  training.remainingValue = (ex && ex.value!=null && (ex.unitType==='reps' || ex.unitType==='distance')) ? ex.value : null;
+  var effv = ex ? setVal(ex, training.currentSet) : null;
+  training.remainingValue = (ex && effv.value!=null && (ex.unitType==='reps' || ex.unitType==='distance')) ? effv.value : null;
 }
 
 /* Timer richtet sich nach der echten Uhrzeit: nach einem App-Wechsel holt er verpasste Sekunden sofort nach */
@@ -1286,7 +1338,7 @@ function nextInfo(){
   var ex = null, label = '';
   if(w.type==='classic' || w.type==='fortime'){
     var cur = w.exercises[t.currentExerciseIndex];
-    if(t.currentSet < cur.sets){ ex = cur; label = 'Satz '+(t.currentSet+1)+'/'+cur.sets; }
+    if(t.currentSet < cur.sets){ var nxs = setVal(cur, t.currentSet+1); ex = { name:cur.name, value:nxs.value, weight:nxs.weight, unitType:cur.unitType }; label = 'Satz '+(t.currentSet+1)+'/'+cur.sets; }
     else if(t.currentExerciseIndex+1 < n){ ex = w.exercises[t.currentExerciseIndex+1]; }
     else return {end:true};
   } else if(w.type==='circuit'){
@@ -1377,18 +1429,19 @@ function renderTraining(){
     curBlock = '<div class="current-block"><div class="cur-label">Block geschafft</div><div class="cur-name">Pause</div><div class="rep-unit" style="font-size:16px;">Der nächste Block startet, sobald der Timer abläuft.</div></div>';
   } else if(ex){
     var hasSets = (w.type==='classic' || w.type==='fortime');
+    var eff = hasSets ? setVal(ex, training.currentSet) : { value:ex.value, weight:ex.weight };
     var showCounter = (w.counterEnabled && hasSets && training.remainingValue!=null);
     var big = '';
-    if(ex.value!=null){
-      var dispVal = showCounter ? training.remainingValue : ex.value;
-      var sub = (showCounter && dispVal!==ex.value) ? ' · von '+ex.value : '';
+    if(eff.value!=null){
+      var dispVal = showCounter ? training.remainingValue : eff.value;
+      var sub = (showCounter && dispVal!==eff.value) ? ' · von '+eff.value : '';
       var digits = String(dispVal).length;
       var nc = digits<=2 ? '' : (digits===3 ? 'n3' : (digits===4 ? 'n4' : 'n5'));
       big = '<div class="rep-block"><div class="rep-num '+nc+'">'+dispVal+'</div><div class="rep-unit">'+(UNIT_LABELS[ex.unitType]||'')+sub+'</div></div>';
     }
     var right = '';
-    if(ex.weight!=null){
-      right += '<div class="rs-main">'+ex.weight+' kg</div>';
+    if(eff.weight!=null){
+      right += '<div class="rs-main">'+eff.weight+' kg</div>';
       if(hasSets && ex.sets>1) right += '<div class="rs-sub">Satz '+training.currentSet+' / '+ex.sets+'</div>';
     } else if(hasSets && ex.sets>1){
       right += '<div class="rs-main">Satz '+training.currentSet+' / '+ex.sets+'</div>';
@@ -1396,14 +1449,19 @@ function renderTraining(){
     var curIdx = currentIdx();
     var lt = lastTimeFor(ex.name), pex = (training.plan && training.plan.exercises || []).filter(function(x){ return x.name.toLowerCase()===ex.name.toLowerCase(); })[0];
     var infoLines = '';
-    if(pex && (pex.value!==ex.value || (pex.weight==null?null:pex.weight)!==(ex.weight==null?null:ex.weight))) infoLines += '<div class="plan-dev">Plan war: '+esc(fmtEx(pex))+'</div>';
+    var pset = pex ? (hasSets ? setVal(pex, training.currentSet) : { value:pex.value, weight:pex.weight }) : null;
+    if(pset && (pset.value!==eff.value || (pset.weight==null?null:pset.weight)!==(eff.weight==null?null:eff.weight))) infoLines += '<div class="plan-dev">Plan war: '+esc(fmtExUniform({ name:pex.name, sets:1, value:pset.value, weight:pset.weight, unitType:pex.unitType }))+'</div>';
     if(lt) infoLines += '<div class="last-time">Zuletzt: '+esc(fmtEx(lt.ex))+' ('+shortDate(lt.date)+')</div>';
     var liveBlock = '<button class="ghost-btn le-btn" data-action="liveToggle">'+(training.liveEdit ? '✕ Anpassen schließen' : '✎ Gewicht / Wdh. anpassen')+'</button>';
     if(training.liveEdit && w.exercises[training.liveIdx]){
       var lex = w.exercises[training.liveIdx], dr = training.liveDraft || {};
       var uLbl = lex.unitType==='distance' ? 'm' : (lex.unitType==='time' ? 's' : 'Wdh.');
-      var dv = (dr.value!==undefined ? dr.value : lex.value), dw = (dr.weight!==undefined ? dr.weight : lex.weight);
-      liveBlock += '<div class="live-edit"><div class="le-title">Gilt ab jetzt für <b style="color:var(--chalk);">'+esc(lex.name)+'</b>. Der Plan bleibt im Archiv erhalten.</div>' +
+      var perSet = (w.type==='classic' || w.type==='fortime') && lex.sets>1 && training.liveIdx===training.currentExerciseIndex;
+      var lbase = perSet ? setVal(lex, training.currentSet) : { value:lex.value, weight:lex.weight };
+      var lscope = training.liveScope || 'from';
+      var dv = (dr.value!==undefined ? dr.value : lbase.value), dw = (dr.weight!==undefined ? dr.weight : lbase.weight);
+      liveBlock += '<div class="live-edit"><div class="le-title">'+(perSet ? 'Satz '+training.currentSet+' von '+lex.sets+' · ' : 'Gilt ab jetzt für ')+'<b style="color:var(--chalk);">'+esc(lex.name)+'</b>. Der Plan bleibt im Archiv erhalten.</div>' +
+        (perSet ? '<div class="le-scope"><button class="tag-chip'+(lscope==='only'?' on':'')+'" data-action="leScope" data-scope="only">Nur Satz '+training.currentSet+'</button><button class="tag-chip'+(lscope==='from'?' on':'')+'" data-action="leScope" data-scope="from">Satz '+training.currentSet+' und alle weiteren</button></div>' : '') +
         '<div class="le-row"><span class="le-l">'+uLbl+'</span><button class="le-step" data-action="leStep" data-field="value" data-delta="-1">−</button><input type="number" inputmode="decimal" id="le_value" value="'+(dv==null?'':dv)+'"><button class="le-step" data-action="leStep" data-field="value" data-delta="1">+</button></div>' +
         '<div class="le-row"><span class="le-l">kg</span><button class="le-step" data-action="leStep" data-field="weight" data-delta="-2.5">−</button><input type="number" inputmode="decimal" step="0.5" id="le_weight" value="'+(dw==null?'':dw)+'"><button class="le-step" data-action="leStep" data-field="weight" data-delta="2.5">+</button></div>' +
         '<button class="primary-btn" style="margin-top:4px; padding:14px;" data-action="leApply">Übernehmen</button></div>';
@@ -1458,6 +1516,7 @@ function renderTraining(){
       var cls = i<training.currentExerciseIndex ? 'done' : (i===training.currentExerciseIndex ? 'current' : '');
       var simple = (w.type==='circuit' || w.type==='amrap' || w.type==='emomblock');
       var meta = (e2.value!=null? (simple?'':e2.sets+'x')+e2.value+(e2.unitType==='distance'?'m':e2.unitType==='time'?'s':'') : (simple?'':e2.sets+' Satz'+(e2.sets>1?'e':''))) + (e2.weight!=null? (simple && e2.value==null ? '' : ' · ')+e2.weight+'kg':'');
+      if(e2.setVals) meta = fmtEx(e2);
       var check = i<training.currentExerciseIndex ? '✓' : '';
       return '<div class="ov-item '+cls+'"><div class="ov-check">'+check+'</div><div class="ov-name">'+esc(e2.name)+'</div><div class="ov-meta">'+meta+'</div></div>';
     }).join('');
@@ -1811,10 +1870,11 @@ function prInfo(){
   cachedDoneAsc().forEach(function(e){
     var w = e.workout;
     w.exercises.forEach(function(x){
-      if(x.weight==null) return;
+      var mw = exMaxWeight(x);
+      if(mw==null) return;
       var k = x.name.toLowerCase();
       counts[k] = (counts[k]||0)+1;
-      if(best[k]==null || x.weight > best[k]){ best[k] = x.weight; holders[k] = e.id; }
+      if(best[k]==null || mw > best[k]){ best[k] = mw; holders[k] = e.id; }
     });
     if(w.type==='fortime' || w.type==='amrap'){
       var sc = w.type==='fortime' ? parseTimeSec(e.result) : parseAmrapScore(e.result);
@@ -1888,9 +1948,9 @@ function renderProgress(){
   var sel = (state.progressEx && map[state.progressEx]) ? state.progressEx : keys[0];
   var out = '<div class="param-field" style="margin-bottom:12px;"><label>Übung</label><select id="progSel" style="width:100%; padding:12px; font-size:15px;">' +
     keys.map(function(k){ return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(map[k].name)+' ('+map[k].pts.length+')</option>'; }).join('') + '</select></div>';
-  var sdata = map[sel], hasW = sdata.pts.some(function(p){ return p.ex.weight!=null; });
-  var all = sdata.pts.filter(function(p){ return hasW ? p.ex.weight!=null : p.ex.value!=null; }).map(function(p){
-    return { date:p.date, id:p.id, ex:p.ex, y: hasW ? p.ex.weight : p.ex.value };
+  var sdata = map[sel], hasW = sdata.pts.some(function(p){ return exMaxWeight(p.ex)!=null; });
+  var all = sdata.pts.filter(function(p){ return hasW ? exMaxWeight(p.ex)!=null : exMaxValue(p.ex)!=null; }).map(function(p){
+    return { date:p.date, id:p.id, ex:p.ex, y: hasW ? exMaxWeight(p.ex) : exMaxValue(p.ex) };
   });
   var series = all.slice(-30);
   var u0 = series[0].ex.unitType;
@@ -1925,7 +1985,66 @@ function renderProgress(){
 }
 
 /* ---------- Archive screen ---------- */
+/* Werte pro Satz: ex.setVals = [{value,weight}, …]; ex.value/ex.weight = Werte von Satz 1 */
+function setEditMap(){
+  if(state.setEditFor !== state.workout){ state.setEditFor = state.workout; state.setEdit = {}; }
+  return state.setEdit;
+}
+function setVal(ex, n){
+  if(ex.setVals && ex.setVals[n-1]) return ex.setVals[n-1];
+  return { value:ex.value, weight:ex.weight };
+}
+function normalizeSetVals(ex){
+  if(!ex.setVals) return;
+  var n = Math.max(1, ex.sets||1), sv = ex.setVals;
+  var last = sv.length ? sv[sv.length-1] : { value:ex.value, weight:ex.weight };
+  var out = [];
+  for(var i=0;i<n;i++){
+    var src = sv[i] || last;
+    out.push({ value: src.value==null ? null : src.value, weight: src.weight==null ? null : src.weight });
+  }
+  var uniform = out.every(function(x){ return x.value===out[0].value && x.weight===out[0].weight; });
+  ex.value = out[0].value; ex.weight = out[0].weight;
+  if(uniform || n<2) delete ex.setVals; else ex.setVals = out;
+}
+function exMaxWeight(x){
+  if(x.setVals && x.setVals.length){
+    var m = null; x.setVals.forEach(function(v){ if(v.weight!=null && (m==null || v.weight>m)) m = v.weight; });
+    return m;
+  }
+  return x.weight;
+}
+function exMaxValue(x){
+  if(x.setVals && x.setVals.length){
+    var m = null; x.setVals.forEach(function(v){ if(v.value!=null && (m==null || v.value>m)) m = v.value; });
+    return m;
+  }
+  return x.value;
+}
+function svKey(e){
+  if(!e.setVals || e.setVals.length<2) return '';
+  var f = e.setVals[0];
+  if(e.setVals.every(function(x){ return x.value===f.value && x.weight===f.weight; })) return '';
+  return JSON.stringify(e.setVals.map(function(x){ return [x.value==null?null:x.value, x.weight==null?null:x.weight]; }));
+}
 function fmtEx(e){
+  var sv = (e.setVals && e.setVals.length>1) ? e.setVals : null;
+  if(sv){
+    var u2 = e.unitType==='distance' ? ' m' : (e.unitType==='time' ? ' s' : '');
+    var vs = sv.map(function(x){ return x.value; }), ws = sv.map(function(x){ return x.weight; });
+    var sameV = vs.every(function(v){ return v===vs[0]; }), sameW = ws.every(function(v){ return v===ws[0]; });
+    var out = [];
+    if(vs.some(function(v){ return v!=null; })){
+      out.push(sameV ? sv.length+'×'+vs[0]+u2 : vs.map(function(v){ return v==null ? '–' : v; }).join('/')+(u2 || ' Wdh.'));
+    }
+    if(ws.some(function(v){ return v!=null; })){
+      out.push(sameW ? (ws[0]==null ? '–' : ws[0])+' kg' : ws.map(function(v){ return v==null ? '–' : v; }).join('/')+' kg');
+    }
+    return out.join(' · ') || '–';
+  }
+  return fmtExUniform(e);
+}
+function fmtExUniform(e){
   var parts = [];
   if(e.value!=null){
     var u = e.unitType==='distance' ? ' m' : (e.unitType==='time' ? ' s' : '');
@@ -1936,7 +2055,7 @@ function fmtEx(e){
 }
 function exSame(a,b){
   return a.name===b.name && a.sets===b.sets && (a.value==null?null:a.value)===(b.value==null?null:b.value) &&
-    (a.unitType||null)===(b.unitType||null) && (a.weight==null?null:a.weight)===(b.weight==null?null:b.weight);
+    (a.unitType||null)===(b.unitType||null) && (a.weight==null?null:a.weight)===(b.weight==null?null:b.weight) && svKey(a)===svKey(b);
 }
 function diffRows(entry){
   var plan = entry.plan.exercises, done = entry.workout.exercises, rows = [];
@@ -2264,12 +2383,14 @@ app.addEventListener('click', function(e){
   }
   else if(action==='addEx'){
     syncPreviewFromDOM();
+    state.setEditFor = null;
     state.workout.exercises.push({name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null});
     render();
   }
   else if(action==='removeEx'){
     syncPreviewFromDOM();
     var idx = parseInt(t.getAttribute('data-idx'),10);
+    state.setEditFor = null;
     state.workout.exercises.splice(idx,1);
     render();
   }
@@ -2333,11 +2454,21 @@ app.addEventListener('click', function(e){
     state.dateEditId = null;
     render();
   }
+  else if(action==='toggleSets'){
+    syncPreviewFromDOM();
+    var tsm = setEditMap(), tsi = t.getAttribute('data-idx');
+    tsm[tsi] = !tsm[tsi];
+    render();
+  }
+  else if(action==='leScope'){ training.liveScope = t.getAttribute('data-scope'); render(); }
   else if(action==='liveToggle'){
     if(training.liveEdit){ training.liveEdit = false; training.liveDraft = null; }
     else {
       var lw = state.workout, li = currentIdx(), lx = lw.exercises[li];
-      if(lx){ training.liveEdit = true; training.liveIdx = li; training.liveDraft = { value: lx.value, weight: lx.weight }; }
+      if(lx){
+        var lb0 = ((lw.type==='classic' || lw.type==='fortime') && lx.sets>1) ? setVal(lx, training.currentSet) : { value:lx.value, weight:lx.weight };
+        training.liveEdit = true; training.liveIdx = li; training.liveDraft = { value: lb0.value, weight: lb0.weight };
+      }
     }
     render();
   }
@@ -2356,9 +2487,20 @@ app.addEventListener('click', function(e){
     var aw = state.workout, ax = aw.exercises[training.liveIdx];
     if(ax){
       var av = document.getElementById('le_value').value, awt = document.getElementById('le_weight').value;
-      ax.value = av==='' ? null : parseFloat(av);
-      if(ax.value!=null && !ax.unitType) ax.unitType = 'reps';
-      ax.weight = awt==='' ? null : parseFloat(awt);
+      var anv = av==='' ? null : parseFloat(av), anw = awt==='' ? null : parseFloat(awt);
+      var aPerSet = (aw.type==='classic' || aw.type==='fortime') && ax.sets>1 && training.liveIdx===training.currentExerciseIndex;
+      if(anv!=null && !ax.unitType) ax.unitType = 'reps';
+      if(aPerSet){
+        if(!ax.setVals){ ax.setVals = []; for(var si=0; si<ax.sets; si++) ax.setVals.push({ value:ax.value, weight:ax.weight }); }
+        var afrom = training.currentSet-1, ascope = training.liveScope || 'from';
+        for(var sj=afrom; sj<ax.sets; sj++){
+          if(ascope==='only' && sj!==afrom) continue;
+          ax.setVals[sj] = { value:anv, weight:anw };
+        }
+        normalizeSetVals(ax);
+      } else {
+        ax.value = anv; ax.weight = anw;
+      }
       if((aw.type==='classic' || aw.type==='fortime') && training.liveIdx===training.currentExerciseIndex) resetRemaining();
     }
     training.liveEdit = false; training.liveDraft = null;
