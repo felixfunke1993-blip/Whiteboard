@@ -348,6 +348,8 @@
   .sr{display:grid; grid-template-columns:56px 1fr 1fr; gap:8px; align-items:center; font-size:13px; color:var(--chalk-faint);}
   .sr input{width:100%; padding:8px; font-size:14px; text-align:center;}
   .le-scope{display:flex; gap:8px; margin-bottom:12px;}
+  .df-sec{font-size:12px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--accent); margin:12px 0 4px;}
+  .sec-hint{font-size:13px; color:var(--chalk-faint); margin:0 0 12px; line-height:1.5;}
   .cancel-link{display:block; text-align:center; margin-top:14px; color:var(--chalk-faint); font-size:13px; background:none; border:none; text-decoration:underline;}
 </style>
 </head>
@@ -691,6 +693,33 @@ function lookupNamedWorkout(raw){
 }
 
 /* ---------- Parser ---------- */
+/* Typ-Zeile erkennen (EMOM, ZIRKEL, …); liefert null, wenn die Zeile eine normale Übungszeile ist */
+function parseTypeLine(first){
+  var m, type = null, params = {};
+  if((m = first.match(/^ZIRKEL\s*(\d+)/i))){
+    type = 'circuit'; params.rounds = parseInt(m[1],10);
+  } else if((m = first.match(/^E\s*(\d+)\s*MOM\s*(?:x\s*)?(\d+)?\s*(min\w*)?/i))){
+    var en = parseInt(m[1],10), enum_ = m[2] ? parseInt(m[2],10) : null, eMin = !!m[3];
+    params.rounds = enum_==null ? 4 : (eMin ? Math.max(1, Math.floor(enum_/en)) : enum_);
+    if(en===1){ type = 'emom'; params.intervalSec = 60; }
+    else { type = 'emomblock'; params.intervalMin = en; params.intervalSec = en*60; }
+  } else if((m = first.match(/^EMOM\s*(\d+)(?:\s*\/\s*(\d+))?/i))){
+    type = 'emom'; params.rounds = parseInt(m[1],10); params.intervalSec = m[2] ? parseInt(m[2],10) : 60;
+  } else if((m = first.match(/^AMRAP\s*(\d+)/i))){
+    type = 'amrap'; params.minutes = parseInt(m[1],10); params.timeCapSec = params.minutes*60;
+  } else if((m = first.match(/^TABATA\s*(\d+)?(?:\s*\/\s*(\d+)\s*\/\s*(\d+))?/i))){
+    type = 'tabata';
+    params.rounds = m[1] ? parseInt(m[1],10) : 8;
+    params.work = m[2] ? parseInt(m[2],10) : 20;
+    params.rest = m[3] ? parseInt(m[3],10) : 10;
+  } else if(/^FOR\s*TIME/i.test(first) || /^FORTIME/i.test(first)){
+    type = 'fortime';
+  } else if(/^(KLASSISCH|SÄTZE|SAETZE)\s*$/i.test(first)){
+    type = 'classic';
+  }
+  return type ? { type:type, params:params } : null;
+}
+
 function parseWorkout(raw){
   var named = lookupNamedWorkout(raw);
   if(named) return named;
@@ -698,46 +727,28 @@ function parseWorkout(raw){
   var lines = raw.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length>0; });
   if(lines.length===0) return null;
 
-  var type='classic', params={};
-  var first = lines[0];
-
-  var m;
-  if((m = first.match(/^ZIRKEL\s*(\d+)/i))){
-    type='circuit';
-    params.rounds = parseInt(m[1],10);
-    lines = lines.slice(1);
-  } else if((m = first.match(/^E\s*(\d+)\s*MOM\s*(?:x\s*)?(\d+)?\s*(min\w*)?/i))){
-    var en = parseInt(m[1],10), enum_ = m[2] ? parseInt(m[2],10) : null, eMin = !!m[3];
-    params.rounds = enum_==null ? 4 : (eMin ? Math.max(1, Math.floor(enum_/en)) : enum_);
-    if(en===1){ type='emom'; params.intervalSec = 60; }
-    else { type='emomblock'; params.intervalMin = en; params.intervalSec = en*60; }
-    lines = lines.slice(1);
-  } else if((m = first.match(/^EMOM\s*(\d+)(?:\s*\/\s*(\d+))?/i))){
-    type='emom';
-    params.rounds = parseInt(m[1],10);
-    params.intervalSec = m[2] ? parseInt(m[2],10) : 60;
-    lines = lines.slice(1);
-  } else if((m = first.match(/^AMRAP\s*(\d+)/i))){
-    type='amrap';
-    params.minutes = parseInt(m[1],10);
-    params.timeCapSec = params.minutes*60;
-    lines = lines.slice(1);
-  } else if((m = first.match(/^TABATA\s*(\d+)?(?:\s*\/\s*(\d+)\s*\/\s*(\d+))?/i))){
-    type='tabata';
-    params.rounds = m[1] ? parseInt(m[1],10) : 8;
-    params.work = m[2] ? parseInt(m[2],10) : 20;
-    params.rest = m[3] ? parseInt(m[3],10) : 10;
-    lines = lines.slice(1);
-  } else if(/^FOR\s*TIME/i.test(first) || /^FORTIME/i.test(first)){
-    type='fortime';
-    lines = lines.slice(1);
-  }
-
-  var exercises = lines.map(parseExerciseLine).filter(Boolean);
-  if(type==='circuit' || type==='emomblock') exercises.forEach(function(e){ e.sets = 1; });
-  if(exercises.length===0) return null;
-
-  return { type: type, params: params, exercises: exercises };
+  var secs = [], cur = null;
+  lines.forEach(function(line){
+    var tl = parseTypeLine(line);
+    if(tl){
+      if(cur && cur.lines.length) secs.push(cur);
+      cur = { type:tl.type, params:tl.params, lines:[] };
+    } else {
+      if(!cur) cur = { type:'classic', params:{}, lines:[] };
+      cur.lines.push(line);
+    }
+  });
+  if(cur && cur.lines.length) secs.push(cur);
+  secs = secs.map(function(sc){
+    var exs = sc.lines.map(parseExerciseLine).filter(Boolean);
+    if(sc.type==='circuit' || sc.type==='emomblock') exs.forEach(function(e){ e.sets = 1; });
+    return { type:sc.type, params:sc.params, exercises:exs };
+  }).filter(function(sc){ return sc.exercises.length>0; });
+  if(secs.length===0) return null;
+  if(secs.length===1) return { type:secs[0].type, params:secs[0].params, exercises:secs[0].exercises };
+  var flat = [];
+  secs.forEach(function(sc,k){ sc.exercises.forEach(function(e){ e.sec = k; flat.push(e); }); });
+  return { type:'multi', params:{}, sections:secs.map(function(sc){ return { type:sc.type, params:sc.params }; }), exercises:flat };
 }
 
 function parseExerciseLine(line){
@@ -810,7 +821,23 @@ Klimmzüge 3x8</pre>
       <li><code>AMRAP15</code> – 15 Minuten, so viele Runden wie möglich</li>
       <li><code>TABATA</code> – 8 Runden à 20 Sek. Belastung / 10 Sek. Pause (eigene Werte: <code>TABATA10/30/15</code> = 10 Runden, 30/15 Sek.)</li>
       <li><code>FOR TIME</code> – auf Zeit, die Stoppuhr zählt hoch</li>
+      <li><code>KLASSISCH</code> – Sätze ohne Timer (nützlich, wenn du Abschnitte kombinierst)</li>
     </ul>
+    <h4>Mehrere Abschnitte kombinieren</h4>
+    <p>Jede Typ-Zeile startet einen <b>neuen Abschnitt</b> mit eigenem Modus. Die Abschnitte laufen nacheinander. Zum Beispiel erst Klimmzüge im EMOM (10 Runden alle 90 Sekunden = <code>EMOM10/90</code>), danach klassische Assistenzübungen:</p>
+    <pre>EMOM10/90
+Klimmzüge 5
+
+KLASSISCH
+Bankdrücken 4x8 80kg
+Rudern 3x10 50kg</pre>
+    <p>Oder erst klassisch und zum Schluss ein EMOM-Finisher:</p>
+    <pre>Kniebeugen 5x5 100kg
+Dips 3x10
+
+EMOM8
+10 Kettlebell Swings</pre>
+    <p>Der erste Abschnitt darf ohne Typ-Zeile beginnen, dann ist er klassisch. Zwischen zwei Abschnitten gibt es eine Pause: Du startest den nächsten Abschnitt selbst mit „Los geht's“, so kannst du Gewichte vorbereiten, bevor ein Timer läuft.</p>
     <h4>Übungszeilen</h4>
     <p>Pro Zeile: <b>Name</b> plus optional Zahlen. Die Zahl darf vor oder nach dem Namen stehen.</p>
     <ul>
@@ -861,6 +888,7 @@ Plank 40s</pre>
   var preview = `
     <p>Nach „Workout erstellen" prüfst du hier alles, bevor es losgeht.</p>
     <ul>
+      <li><b>Abschnitte:</b> Hast du mehrere Abschnitte, wählst du oben den Abschnitt aus und bearbeitest ihn darunter mit eigenem Typ, eigenen Runden und Übungen. „＋ Abschnitt“ fügt einen weiteren hinzu, „Abschnitt entfernen“ löscht ihn samt Übungen. Auch ein einfaches Workout kannst du hier um einen Abschnitt erweitern.</li>
       <li><b>Typ wechseln:</b> Tippe oben auf einen anderen Typ (Klassisch, Zirkel, EMOM, Block-EMOM, AMRAP, Tabata, For Time). Runden, Minuten und Intervalle stellst du darunter ein.</li>
       <li><b>Übungen anpassen:</b> Name, Sätze, Wert, Einheit (Wiederholungen / Meter / Sekunden) und Gewicht. Bei mehreren Sätzen öffnet „⇅ Sätze einzeln anpassen" eine Liste, in der du Wiederholungen und Gewicht pro Satz einträgst (z. B. 12 / 10 / 8). Das geht auch nachträglich im Archiv über „✎ Bearbeiten". Mit ✕ entfernst du eine Übung, mit „＋ Übung hinzufügen" ergänzt du eine.</li>
       <li><b>Teilmengen-Zähler</b> (Häkchen): Für große Zahlen wie bei Murph. Im Training trägst du zwischendurch ein, wie viele du schon geschafft hast. Die App zieht sie von der Zielzahl ab und springt bei 0 automatisch weiter. Gilt für klassische und For-Time-Trainings.</li>
@@ -873,6 +901,7 @@ Plank 40s</pre>
   var train = `
     <ul>
       <li><b>Anzeige:</b> Übungsname und Wiederholungszahl stehen groß in der Mitte, rechts daneben das Gewicht. Oben läuft die Zeit, darunter ein Fortschrittsbalken. „Als Nächstes" zeigt dir die folgende Übung, darunter siehst du die Gesamtübersicht. Sie scrollt von selbst zur aktuellen Übung.</li>
+      <li><b>Mehrere Abschnitte:</b> Oben steht „2/3“ für den aktuellen Abschnitt. Ist einer fertig, erscheint eine Pause mit der Vorschau auf den nächsten. Er startet erst, wenn du „Los geht's“ tippst. Im Archiv steht jeder Abschnitt mit seinem Ergebnis, die Übungen sind nach Abschnitten gegliedert.</li>
       <li><b>Erledigt / Zurück:</b> Mit „Erledigt" geht es weiter, mit „Zurück" korrigierst du einen Fehltipp.</li>
       <li><b>Gewicht / Wdh. anpassen:</b> Unter der aktuellen Übung tippst du auf „✎ Gewicht / Wdh. anpassen". Mit − und + oder direkt per Eingabe änderst du die Werte, „Übernehmen" speichert sie. Bei klassischen Trainings mit mehreren Sätzen wählst du, ob die Änderung <b>nur für diesen Satz</b> oder für <b>diesen Satz und alle weiteren</b> gilt. Frühere Sätze bleiben, wie sie waren. In allen anderen Typen gilt sie ab jetzt für die Übung. Die Abweichung wird sofort als Abweichung vom Plan festgehalten. Darunter siehst du „Plan war …" und „Zuletzt …".</li>
       <li><b>Oben rechts:</b> <b>Abbrechen</b> verwirft das Training, dein Text bleibt im Notizzettel. <b>Neustart</b> verwirft es und leert den Notizzettel. <b>Erledigt</b> beendet das Training sofort und speichert es im Archiv, auch wenn du nicht fertig bist.</li>
@@ -1003,6 +1032,7 @@ function renderNote(){
       '<code>AMRAP15</code> – 15 Minuten, so viele Runden wie möglich<br>' +
       '<code>TABATA</code> – 8 Runden 20s/10s (auch <code>TABATA10/30/15</code>)<br>' +
       '<code>FOR TIME</code> – auf Zeit, ohne Countdown<br>' +
+      '<code>KLASSISCH</code> – Sätze ohne Timer; jede weitere Typ-Zeile startet einen neuen Abschnitt (z. B. <code>EMOM10/90</code> = 10 Runden alle 90 Sek., danach <code>KLASSISCH</code>)<br>' +
       'Keine Typ-Zeile = klassisches Training ohne Timer.<br><br>' +
       'Pro Übungszeile: Name + optional <code>3x10</code>, <code>40kg</code>, <code>Sätze</code>, <code>Wiederholungen</code>, <code>m</code> oder <code>sek</code>, Zahl vor oder nach dem Namen.<br><br>' +
       'Nur ein bekannter Name im Feld (z. B. <code>Cindy</code>) lädt automatisch das komplette Workout.' +
@@ -1013,7 +1043,21 @@ function renderNote(){
 
 /* ---------- Preview screen ---------- */
 var TYPE_LABELS = { classic:'Klassisch', circuit:'Zirkel', emom:'EMOM', emomblock:'Block-EMOM', amrap:'AMRAP', tabata:'Tabata', fortime:'For Time' };
-function typeText(w){ return w.type==='emomblock' ? 'E'+(w.params.intervalMin||6)+'MOM' : (TYPE_LABELS[w.type]||w.type); }
+function paramSummary(w){
+  var p = w.params || {};
+  if(w.type==='emom') return (p.rounds||'?')+' Runden à '+(p.intervalSec||60)+' s';
+  if(w.type==='emomblock') return (p.rounds||'?')+' Blöcke à '+(p.intervalMin||6)+' Min.';
+  if(w.type==='amrap') return (p.minutes||'?')+' Min.';
+  if(w.type==='tabata') return (p.rounds||8)+' Runden · '+(p.work||20)+'/'+(p.rest||10)+' s';
+  if(w.type==='circuit') return (p.rounds||'?')+' Runden';
+  if(w.type==='fortime') return 'auf Zeit';
+  return '';
+}
+function secLabelFull(sec){ var ps = paramSummary(sec); return typeText(sec)+(ps ? ' · '+ps : ''); }
+function secHeadHtml(w, k){ return '<div class="df-sec">Abschnitt '+(k+1)+' · '+esc(secLabelFull(w.sections[k]))+'</div>'; }
+function typeText(w){
+  if(w.type==='multi') return (w.sections||[]).map(function(sc){ return typeText({ type:sc.type, params:sc.params||{} }); }).join(' + ');
+  return w.type==='emomblock' ? 'E'+(w.params.intervalMin||6)+'MOM' : (TYPE_LABELS[w.type]||w.type); }
 var UNIT_LABELS = { reps:'Wiederholungen', distance:'Meter', time:'Sekunden' };
 
 function exCardsHtml(w, withLast){
@@ -1036,7 +1080,8 @@ function exCardsHtml(w, withLast){
         setBlock += '<button class="ghost-btn set-toggle" data-action="toggleSets" data-idx="'+i+'">Fertig</button></div>';
       }
     }
-    return '' +
+    var secHead = (w.sections && (i===0 || (w.exercises[i-1].sec||0)!==(ex.sec||0))) ? secHeadHtml(w, ex.sec||0) : '';
+    return secHead +
     '<div class="ex-card" data-idx="'+i+'">' +
       '<span class="rownum mono">#'+(i+1)+'</span>' +
       (w.exercises.length>1 ? '<button class="ex-remove" data-action="removeEx" data-idx="'+i+'">✕</button>' : '') +
@@ -1057,8 +1102,69 @@ function exCardsHtml(w, withLast){
   }).join('');
 }
 
+function secIndex(){
+  var c = state.workout;
+  if(state.secFor !== c){ state.secFor = c; state.secIdx = 0; }
+  return c && c.sections ? Math.min(state.secIdx||0, c.sections.length-1) : 0;
+}
+/* Ansicht auf den aktiven Abschnitt: verhält sich wie ein einfaches Workout, schreibt aber in den Abschnitt */
+function pview(){
+  var c = state.workout;
+  if(!c || !c.sections) return c;
+  var k = secIndex(), sec = c.sections[k], v = {};
+  function prop(name){ Object.defineProperty(v, name, { get:function(){ return sec[name]; }, set:function(x){ sec[name] = x; }, enumerable:true }); }
+  prop('type'); prop('params'); prop('counterEnabled'); prop('stopwatchEnabled');
+  Object.defineProperty(v, 'note', { get:function(){ return c.note; } });
+  Object.defineProperty(v, 'tags', { get:function(){ return c.tags; }, set:function(x){ c.tags = x; } });
+  Object.defineProperty(v, 'exercises', { get:function(){ return c.exercises.filter(function(x){ return (x.sec||0)===k; }); } });
+  return v;
+}
+function makeView(full, k){
+  var sec = full.sections[k];
+  return { type:sec.type, params:sec.params, counterEnabled:!!sec.counterEnabled, stopwatchEnabled:!!sec.stopwatchEnabled, tags:full.tags,
+           exercises: full.exercises.filter(function(x){ return (x.sec||0)===k; }) };
+}
+function shownExercises(){ return state.screen==='editEntry' ? state.workout.exercises : pview().exercises; }
+function addExerciseToWorkout(){
+  var c = state.workout, ne = { name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null };
+  if(!c.sections){ c.exercises.push(ne); return; }
+  var k = state.screen==='editEntry' ? (c.exercises.length ? (c.exercises[c.exercises.length-1].sec||0) : 0) : secIndex();
+  ne.sec = k;
+  var lastIdx = -1;
+  c.exercises.forEach(function(x,i){ if((x.sec||0)===k) lastIdx = i; });
+  c.exercises.splice(lastIdx+1, 0, ne);
+}
+function addSection(){
+  var c = state.workout;
+  if(!c.sections){
+    c.sections = [{ type:c.type, params:c.params, counterEnabled:c.counterEnabled, stopwatchEnabled:c.stopwatchEnabled }];
+    c.exercises.forEach(function(x){ x.sec = 0; });
+    c.type = 'multi'; c.params = {};
+    delete c.counterEnabled; delete c.stopwatchEnabled;
+  }
+  c.sections.push({ type:'classic', params:{} });
+  var k = c.sections.length-1;
+  c.exercises.push({ name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null, sec:k });
+  state.secFor = c; state.secIdx = k;
+}
+function removeSection(k){
+  var c = state.workout;
+  c.exercises = c.exercises.filter(function(x){ return (x.sec||0)!==k; });
+  c.exercises.forEach(function(x){ if((x.sec||0)>k) x.sec = x.sec-1; });
+  c.sections.splice(k,1);
+  if(c.sections.length===1){
+    var s0 = c.sections[0];
+    c.type = s0.type; c.params = s0.params;
+    if(s0.counterEnabled) c.counterEnabled = true;
+    if(s0.stopwatchEnabled) c.stopwatchEnabled = true;
+    delete c.sections;
+    c.exercises.forEach(function(x){ delete x.sec; });
+  }
+  if(!c.exercises.length) c.exercises.push({ name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null });
+  state.secFor = c; state.secIdx = Math.max(0, Math.min(k, (c.sections ? c.sections.length : 1)-1));
+}
 function renderPreview(){
-  var w = state.workout;
+  var c = state.workout, w = pview();
   var chips = Object.keys(TYPE_LABELS).map(function(t){
     return '<button class="type-chip '+(w.type===t?'active':'')+'" data-action="setType" data-type="'+t+'">'+TYPE_LABELS[t]+'</button>';
   }).join('');
@@ -1104,10 +1210,22 @@ function renderPreview(){
     '<span style="font-size:13.5px; color:var(--chalk-dim); line-height:1.5;"><b style="color:var(--chalk);">Stoppuhr</b><br>Gesamtzeit während des Trainings mitlaufen lassen.</span>' +
   '</label>') : '';
 
+  var secBar = '';
+  if(c.sections){
+    var sk = secIndex();
+    secBar = '<div class="overview-title">Abschnitte</div><div class="type-select-row">' +
+      c.sections.map(function(sc,i){ return '<button class="type-chip'+(i===sk?' active':'')+'" data-action="secSelect" data-idx="'+i+'">'+(i+1)+' · '+esc(typeText({ type:sc.type, params:sc.params||{} }))+'</button>'; }).join('') +
+      '<button class="type-chip" data-action="secAdd">＋ Abschnitt</button></div>' +
+      '<div class="sec-hint">Die Abschnitte laufen nacheinander, jeder mit eigenem Modus. Unten bearbeitest du Abschnitt '+(sk+1)+'.</div>' +
+      '<div style="margin:-4px 0 14px;"><button class="ghost-btn" data-action="secRemove" data-idx="'+sk+'">Abschnitt '+(sk+1)+' entfernen</button></div>';
+  } else {
+    secBar = '<button class="ghost-btn" style="width:100%; margin-bottom:14px;" data-action="secAdd">＋ Weiteren Abschnitt mit anderem Modus hinzufügen</button>';
+  }
   return '' +
   header('Vorschau','goto:note') +
   '<main>' +
-    (w.note ? '<div class="hint" style="margin-bottom:16px;">'+esc(w.note)+'</div>' : '') +
+    (c.note ? '<div class="hint" style="margin-bottom:16px;">'+esc(c.note)+'</div>' : '') +
+    secBar +
     '<div class="type-select-row">'+chips+'</div>' +
     params +
     counterToggle +
@@ -1125,7 +1243,7 @@ function renderPreview(){
 }
 
 function syncPreviewFromDOM(){
-  var w = state.workout;
+  var w = (state.screen==='editEntry') ? state.workout : pview();
   var pdv_ = document.getElementById('p_planDate');
   if(pdv_) state.planDate = pdv_.value;
   var er_ = document.getElementById('e_result');
@@ -1200,10 +1318,13 @@ function isCountUp(w){
   return w.type==='fortime' || ((w.type==='classic' || w.type==='circuit') && !!w.stopwatchEnabled);
 }
 function startTraining(){
+  var full = state.workout.sections ? state.workout : null;
+  if(full){ full.exercises.forEach(normalizeSetVals); state.workout = makeView(full, 0); }
   var w = state.workout;
   state.imageOverlay = false;
   state.workout.exercises.forEach(normalizeSetVals);
-  training = { plan: JSON.parse(JSON.stringify((state.plannedId && state.planBase) ? state.planBase : state.workout)), blockFinished:false, startedAt:Date.now(), ticksDone:0, elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
+  training = { plan: JSON.parse(JSON.stringify((state.plannedId && state.planBase) ? state.planBase : (full || state.workout))), blockFinished:false, startedAt:Date.now(), ticksDone:0, elapsed:0, currentExerciseIndex:0, currentSet:1, roundsCompleted:0, currentRound:1, round:1, phase:'work', cancelling:false, remainingValue:null };
+  if(full){ training.full = full; training.secIdx = 0; training.secResults = []; training.pending = false; }
   resetRemaining();
 
   if(w.type==='emom' || w.type==='emomblock'){ training.remaining = w.params.intervalSec; }
@@ -1219,6 +1340,43 @@ function startTraining(){
   }
 }
 
+/* Nächsten Abschnitt eines Kombi-Trainings starten */
+function enterSection(k){
+  var full = training.full;
+  state.workout = makeView(full, k);
+  var w = state.workout;
+  training.secIdx = k; training.pending = false;
+  training.startedAt = Date.now(); training.ticksDone = 0; training.elapsed = 0;
+  training.currentExerciseIndex = 0; training.currentSet = 1; training.roundsCompleted = 0;
+  training.currentRound = 1; training.round = 1; training.phase = 'work'; training.blockFinished = false;
+  training.liveEdit = false; training.liveDraft = null; training.remainingValue = null;
+  clearTones();
+  if(w.type==='emom' || w.type==='emomblock'){ training.remaining = w.params.intervalSec; }
+  else if(w.type==='amrap'){ training.remaining = w.params.timeCapSec; }
+  else if(w.type==='tabata'){ training.remaining = w.params.work; }
+  resetRemaining();
+  render();
+  window.scrollTo(0,0);
+  if(hasTimer(w)) scheduleTimerLoop();
+}
+function renderSectionBreak(){
+  var full = training.full, k = training.secIdx, n = full.sections.length;
+  var nv = makeView(full, k+1);
+  var prev = training.secResults[training.secResults.length-1] || '';
+  var list = nv.exercises.map(function(x){
+    return '<div class="ov-item"><div class="ov-name">'+esc(x.name)+'</div><div class="ov-meta">'+esc(fmtEx(x))+'</div></div>';
+  }).join('');
+  var ps = paramSummary(nv);
+  return '' +
+  '<div class="train-header"><span class="train-type-badge">Abschnitt '+(k+1)+' / '+n+' geschafft</span><div class="pills">' +
+    '<button class="pill" data-action="cancelTraining">Abbrechen</button>' +
+    '<button class="pill" data-action="restartFresh">Neustart</button>' +
+    '<button class="pill accent" data-action="finishManually">Erledigt</button>' +
+  '</div></div>' +
+  '<div class="current-block"><div class="cur-label">Kurze Pause</div><div class="cur-name">Abschnitt '+(k+1)+' geschafft ✓</div><div class="rep-unit" style="font-size:16px;">'+esc(prev)+'</div></div>' +
+  '<div class="overview"><div class="overview-title">Weiter mit Abschnitt '+(k+2)+': '+esc(typeText(nv))+(ps ? ' · '+esc(ps) : '')+'</div><div class="ov-list">'+list+'</div></div>' +
+  '<div class="action-row"><button class="btn-done" data-action="secStart">Los geht\'s ▶</button></div>';
+}
 function resetRemaining(){
   var w = state.workout;
   if(!w || !w.counterEnabled || (w.type!=='classic' && w.type!=='fortime')){ training.remainingValue = null; return; }
@@ -1372,7 +1530,10 @@ function renderNext(){
   var w = state.workout;
   var info = nextInfo();
   var name, meta = '';
-  if(info.end){ name = '🏁 Letzte Übung'; }
+  if(info.end){
+    if(training.full && training.secIdx < training.full.sections.length-1){ name = 'Nächster Abschnitt'; meta = typeText(makeView(training.full, training.secIdx+1)); }
+    else name = '🏁 Letzte Übung';
+  }
   else if(info.rest){ name = 'Pause'; meta = (info.meta!=null ? info.meta : w.params.rest+' s'); }
   else {
     var ex = info.ex, parts = [];
@@ -1401,9 +1562,10 @@ function scrollOverviewToCurrent(){
 function unitSuffix(u){ return u==='distance' ? 'm' : (u==='time' ? 's' : 'x'); }
 
 function renderTraining(){
+  if(training.pending) return renderSectionBreak();
   var w = state.workout;
   var ex = currentExercise();
-  var typeLabel = typeText(w);
+  var typeLabel = typeText(w) + (training.full ? ' · '+(training.secIdx+1)+'/'+training.full.sections.length : '');
 
   var leftMain = '', leftSub = '';
   if(w.type==='emom'){ leftMain = 'Runde '+training.currentRound+' / '+w.params.rounds; }
@@ -1447,7 +1609,7 @@ function renderTraining(){
       right += '<div class="rs-main">Satz '+training.currentSet+' / '+ex.sets+'</div>';
     }
     var curIdx = currentIdx();
-    var lt = lastTimeFor(ex.name), pex = (training.plan && training.plan.exercises || []).filter(function(x){ return x.name.toLowerCase()===ex.name.toLowerCase(); })[0];
+    var lt = lastTimeFor(ex.name), pex = (training.plan && training.plan.exercises || []).filter(function(x){ return x.name.toLowerCase()===ex.name.toLowerCase() && (x.sec||0)===(ex.sec||0); })[0];
     var infoLines = '';
     var pset = pex ? (hasSets ? setVal(pex, training.currentSet) : { value:pex.value, weight:pex.weight }) : null;
     if(pset && (pset.value!==eff.value || (pset.weight==null?null:pset.weight)!==(eff.weight==null?null:eff.weight))) infoLines += '<div class="plan-dev">Plan war: '+esc(fmtExUniform({ name:pex.name, sets:1, value:pset.value, weight:pset.weight, unitType:pex.unitType }))+'</div>';
@@ -1673,9 +1835,8 @@ function subtractReps(){
   }
 }
 
-function finishWorkout(){
+function finishWorkout(force){
   if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
-  releaseWake();
   var w = state.workout, t = training;
   var resultText;
   if(w.type==='emom'){
@@ -1700,7 +1861,15 @@ function finishWorkout(){
     if(w.stopwatchEnabled) resultText += ' · '+formatTime(t.elapsed);
   }
 
-  var entry = { id: Date.now(), date: new Date().toISOString(), workout: JSON.parse(JSON.stringify(w)), plan: t.plan || JSON.parse(JSON.stringify(w)), result: resultText };
+  var fw = t.full || w;
+  if(t.full){
+    if(!t.pending) t.secResults.push(typeText(w)+': '+resultText.replace('Workout abgeschlossen ✓','✓'));
+    if(!force && t.secIdx < t.full.sections.length-1){ t.pending = true; render(); return; }
+    resultText = t.secResults.join(' · ');
+    state.workout = t.full;
+  }
+  releaseWake();
+  var entry = { id: Date.now(), date: new Date().toISOString(), workout: JSON.parse(JSON.stringify(fw)), plan: t.plan || JSON.parse(JSON.stringify(fw)), result: resultText };
   if(!saveArchiveEntry(entry)) alert('Das Workout konnte nicht im Archiv gespeichert werden (Speicher voll). Bitte alte Einträge löschen oder ein Backup exportieren.');
   else if(state.plannedId){ deleteArchiveEntry(state.plannedId); }
   state.plannedId = null; state.planDate = null;
@@ -1713,6 +1882,7 @@ function finishWorkout(){
 
 function cancelTraining(){
   if(!confirm('Training wirklich abbrechen? Der Fortschritt wird nicht gespeichert.')) return;
+  if(training && training.full) state.workout = training.full;
   clearTones();
   state.plannedId = null; state.planDate = null;
   if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
@@ -1741,7 +1911,7 @@ function restartFresh(){
 function finishManually(){
   if(!confirm('Training jetzt beenden und im Archiv speichern?')) return;
   clearTones();
-  finishWorkout();
+  finishWorkout(true);
 }
 
 /* ---------- Summary screen ---------- */
@@ -2062,18 +2232,20 @@ function diffRows(entry){
   var n = Math.max(plan.length, done.length);
   for(var i=0;i<n;i++){
     var p = plan[i], d = done[i];
-    if(p && d) rows.push({ name:d.name, planName:p.name, p:fmtEx(p), d:fmtEx(d), changed:!exSame(p,d), pr:isWeightPr(entry, d.name) });
-    else if(p) rows.push({ name:p.name, p:fmtEx(p), d:'nicht gemacht', changed:true });
-    else rows.push({ name:d.name, p:'nicht geplant', d:fmtEx(d), changed:true, pr:isWeightPr(entry, d.name) });
+    if(p && d) rows.push({ sec:d.sec||0, name:d.name, planName:p.name, p:fmtEx(p), d:fmtEx(d), changed:!exSame(p,d), pr:isWeightPr(entry, d.name) });
+    else if(p) rows.push({ sec:p.sec||0, name:p.name, p:fmtEx(p), d:'nicht gemacht', changed:true });
+    else rows.push({ sec:d.sec||0, name:d.name, p:'nicht geplant', d:fmtEx(d), changed:true, pr:isWeightPr(entry, d.name) });
   }
   return rows;
 }
 function renderDiff(entry){
-  var rows = diffRows(entry);
+  var rows = diffRows(entry), secs = entry.workout.sections, lastSec = -1;
   return '<div class="df-list">'+rows.map(function(r){
     var pr = r.pr ? ' 🏆' : '';
-    if(!r.changed) return '<div class="df-row"><span class="df-name">'+esc(r.name)+'</span><span class="df-val">'+esc(r.d)+pr+'</span></div>';
-    return '<div class="df-row changed"><div class="df-name">'+esc(r.name)+(r.planName && r.planName!==r.name ? ' <span class="df-was">(geplant: '+esc(r.planName)+')</span>' : '')+'</div>' +
+    var head = '';
+    if(secs && r.sec!==lastSec){ lastSec = r.sec; head = secHeadHtml(entry.workout, r.sec); }
+    if(!r.changed) return head+'<div class="df-row"><span class="df-name">'+esc(r.name)+'</span><span class="df-val">'+esc(r.d)+pr+'</span></div>';
+    return head+'<div class="df-row changed"><div class="df-name">'+esc(r.name)+(r.planName && r.planName!==r.name ? ' <span class="df-was">(geplant: '+esc(r.planName)+')</span>' : '')+'</div>' +
       '<div class="df-cmp"><span class="df-plan"><i>geplant</i>'+esc(r.p)+'</span><span class="df-done"><i>absolviert</i>'+esc(r.d)+pr+'</span></div></div>';
   }).join('')+'</div>';
 }
@@ -2123,7 +2295,14 @@ function renderArchiveEntry(entry){
     (!planned && entry.plan ? (function(){
         var changed = diffRows(entry).some(function(r){ return r.changed; });
         return '<div style="margin-top:8px;"><span class="arch-tag'+(changed?' diff':'')+'">'+(changed ? 'Abweichung vom Plan' : 'wie geplant')+'</span></div>' + renderDiff(entry);
-      })() : (planned ? '<div class="df-list">'+w.exercises.map(function(x){ return '<div class="df-row"><span class="df-name">'+esc(x.name)+'</span><span class="df-val">'+esc(fmtEx(x))+'</span></div>'; }).join('')+'</div>' : '<div class="arch-names">'+esc(names)+'</div>')) +
+      })() : (planned ? '<div class="df-list">'+(function(){
+        var last = -1;
+        return w.exercises.map(function(x){
+          var head = '';
+          if(w.sections && (x.sec||0)!==last){ last = x.sec||0; head = secHeadHtml(w, last); }
+          return head+'<div class="df-row"><span class="df-name">'+esc(x.name)+'</span><span class="df-val">'+esc(fmtEx(x))+'</span></div>';
+        }).join('');
+      })()+'</div>' : '<div class="arch-names">'+esc(names)+'</div>')) +
     (planned && state.dateEditId===entry.id ? '<div class="tag-panel"><label style="font-size:12px;color:var(--chalk-faint);">Geplant für</label><input type="date" id="planDateEdit" value="'+esc(entry.plannedFor||'')+'" style="width:100%;padding:10px;font-size:15px;margin:6px 0 10px;"><div style="display:flex;gap:8px;"><button class="ghost-btn" style="flex:1;" data-action="saveDate" data-id="'+entry.id+'">Speichern</button><button class="ghost-btn" style="flex:1;" data-action="clearDate" data-id="'+entry.id+'">Datum entfernen</button></div></div>' : '') +
     (planned ? '' : '<div class="arch-result">'+esc(entry.result)+(isWorkoutBest(entry) ? ' 🏆' : '')+'</div>') +
     '<div class="arch-actions">' +
@@ -2372,26 +2551,36 @@ app.addEventListener('click', function(e){
   }
   else if(action==='setType'){
     syncPreviewFromDOM();
-    state.workout.type = t.getAttribute('data-type');
-    if(state.workout.type==='circuit' && !state.workout.params.rounds){ state.workout.params.rounds=3; }
-    if(state.workout.type==='emomblock' && !state.workout.params.intervalMin){ state.workout.params.intervalMin=6; state.workout.params.intervalSec=360; state.workout.params.rounds=4; }
-    if(state.workout.type==='emom' && state.workout.params.intervalMin){ delete state.workout.params.intervalMin; state.workout.params.intervalSec=60; }
-    if(state.workout.type==='emom' && !state.workout.params.rounds){ state.workout.params.rounds=10; state.workout.params.intervalSec=60; }
-    if(state.workout.type==='amrap' && !state.workout.params.minutes){ state.workout.params.minutes=15; state.workout.params.timeCapSec=900; }
-    if(state.workout.type==='tabata' && !state.workout.params.rounds){ state.workout.params.rounds=8; state.workout.params.work=20; state.workout.params.rest=10; }
+    var pv = pview();
+    pv.type = t.getAttribute('data-type');
+    if(pv.type==='circuit' && !pv.params.rounds){ pv.params.rounds=3; }
+    if(pv.type==='emomblock' && !pv.params.intervalMin){ pv.params.intervalMin=6; pv.params.intervalSec=360; pv.params.rounds=4; }
+    if(pv.type==='emom' && pv.params.intervalMin){ delete pv.params.intervalMin; pv.params.intervalSec=60; }
+    if(pv.type==='emom' && !pv.params.rounds){ pv.params.rounds=10; pv.params.intervalSec=60; }
+    if(pv.type==='amrap' && !pv.params.minutes){ pv.params.minutes=15; pv.params.timeCapSec=900; }
+    if(pv.type==='tabata' && !pv.params.rounds){ pv.params.rounds=8; pv.params.work=20; pv.params.rest=10; }
     render();
   }
+  else if(action==='secSelect'){ syncPreviewFromDOM(); state.secIdx = parseInt(t.getAttribute('data-idx'),10); state.setEditFor = null; render(); window.scrollTo(0,0); }
+  else if(action==='secAdd'){ syncPreviewFromDOM(); addSection(); state.setEditFor = null; render(); window.scrollTo(0,0); }
+  else if(action==='secRemove'){
+    var rk = parseInt(t.getAttribute('data-idx'),10);
+    if(confirm('Abschnitt '+(rk+1)+' mit allen Übungen entfernen?')){ syncPreviewFromDOM(); removeSection(rk); state.setEditFor = null; render(); window.scrollTo(0,0); }
+  }
+  else if(action==='secStart'){ enterSection(training.secIdx+1); }
   else if(action==='addEx'){
     syncPreviewFromDOM();
     state.setEditFor = null;
-    state.workout.exercises.push({name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null});
+    addExerciseToWorkout();
     render();
   }
   else if(action==='removeEx'){
     syncPreviewFromDOM();
     var idx = parseInt(t.getAttribute('data-idx'),10);
     state.setEditFor = null;
-    state.workout.exercises.splice(idx,1);
+    var shown = shownExercises(), refEx = shown[idx];
+    var gi = state.workout.exercises.indexOf(refEx);
+    if(gi>=0) state.workout.exercises.splice(gi,1);
     render();
   }
   else if(action==='startTraining'){
