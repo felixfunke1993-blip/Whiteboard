@@ -371,6 +371,9 @@
   .ti-actions button{flex:1; margin:0; padding:13px 8px;}
   .tpl-box{margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:var(--radius);}
   .tpl-days{display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 12px;}
+  .ins-btn{display:block; width:100%; background:transparent; border:none; color:var(--chalk-faint); font-family:inherit; font-size:12.5px; padding:6px 0; margin-bottom:6px; cursor:pointer; text-align:center;}
+  .ins-btn:active{color:var(--accent);}
+  .sec-tools{display:flex; gap:8px; flex-wrap:wrap; margin:-4px 0 14px;}
   .cancel-link{display:block; text-align:center; margin-top:14px; color:var(--chalk-faint); font-size:13px; background:none; border:none; text-decoration:underline;}
 </style>
 </head>
@@ -1294,7 +1297,8 @@ Kniebeugen 5 70kg</pre>
   var preview = `
     <p>Nach „Workout erstellen" prüfst du hier alles, bevor es losgeht.</p>
     <ul>
-      <li><b>Abschnitte:</b> Hast du mehrere Abschnitte, wählst du oben den Abschnitt aus und bearbeitest ihn darunter mit eigenem Typ, eigenen Runden und Übungen. „＋ Abschnitt“ fügt einen weiteren hinzu, „Abschnitt entfernen“ löscht ihn samt Übungen. Auch ein einfaches Workout kannst du hier um einen Abschnitt erweitern.</li>
+      <li><b>Übungen einfügen:</b> Zwischen den Übungskarten steht „＋ Übung hier einfügen“. Damit setzt du eine neue Übung an genau diese Stelle, auch mitten in einen Abschnitt. Ganz ans Ende kommt sie über „＋ Übung hinzufügen“. Das geht auch nachträglich im Archiv über „✎ Bearbeiten“.</li>
+      <li><b>Abschnitte:</b> Hast du mehrere Abschnitte, wählst du oben den Abschnitt aus und bearbeitest ihn darunter mit eigenem Typ, eigenen Runden und Übungen. „＋ Abschnitt davor“ und „＋ Abschnitt danach“ fügen einen neuen Abschnitt direkt vor oder nach dem gewählten ein, „Abschnitt entfernen“ löscht ihn samt Übungen. Auch ein einfaches Workout kannst du so um einen Abschnitt erweitern.</li>
       <li><b>Typ wechseln:</b> Tippe oben auf einen anderen Typ (Klassisch, Zirkel, EMOM, Block-EMOM, AMRAP, Tabata, For Time). Runden, Minuten und Intervalle stellst du darunter ein.</li>
       <li><b>Übungen anpassen:</b> Name, Sätze, Wert, Einheit (Wiederholungen / Meter / Sekunden) und Gewicht. Bei mehreren Sätzen öffnet „⇅ Sätze einzeln anpassen" eine Liste, in der du Wiederholungen und Gewicht pro Satz einträgst (z. B. 12 / 10 / 8). Das geht auch nachträglich im Archiv über „✎ Bearbeiten". Mit ✕ entfernst du eine Übung, mit „＋ Übung hinzufügen" ergänzt du eine.</li>
       <li><b>Teilmengen-Zähler</b> (Häkchen): Für große Zahlen wie bei Murph. Im Training trägst du zwischendurch ein, wie viele du schon geschafft hast. Die App zieht sie von der Zielzahl ab und springt bei 0 automatisch weiter. Gilt für klassische und For-Time-Trainings.</li>
@@ -1491,6 +1495,9 @@ function typeText(w){
   return w.type==='emomblock' ? 'E'+(w.params.intervalMin||6)+'MOM' : (TYPE_LABELS[w.type]||w.type); }
 var UNIT_LABELS = { reps:'Wiederholungen', distance:'Meter', time:'Sekunden' };
 
+function insBtn(at, sec){
+  return '<button class="ins-btn" data-action="insertEx" data-at="'+at+'"'+(sec!=null ? ' data-sec="'+sec+'"' : '')+'>＋ Übung hier einfügen</button>';
+}
 function exCardsHtml(w, withLast){
   return w.exercises.map(function(ex, i){
     var setOpen = !!setEditMap()[i];
@@ -1512,7 +1519,14 @@ function exCardsHtml(w, withLast){
         setBlock += '<button class="ghost-btn set-toggle" data-action="toggleSets" data-idx="'+i+'">Fertig</button></div>';
       }
     }
-    var secHead = (w.sections && (i===0 || (w.exercises[i-1].sec||0)!==(ex.sec||0))) ? secHeadHtml(w, ex.sec||0) : '';
+    var secHead = '';
+    if(w.sections){
+      var newSec = (i===0 || (w.exercises[i-1].sec||0)!==(ex.sec||0));
+      if(newSec){
+        if(i>0) secHead += insBtn(i, w.exercises[i-1].sec||0);
+        secHead += secHeadHtml(w, ex.sec||0) + insBtn(i, ex.sec||0);
+      } else secHead += insBtn(i, ex.sec||0);
+    } else secHead += insBtn(i);
     return secHead +
     '<div class="ex-card" data-idx="'+i+'">' +
       '<span class="rownum mono">#'+(i+1)+'</span>' +
@@ -1567,7 +1581,7 @@ function addExerciseToWorkout(){
   c.exercises.forEach(function(x,i){ if((x.sec||0)===k) lastIdx = i; });
   c.exercises.splice(lastIdx+1, 0, ne);
 }
-function addSection(){
+function addSection(pos){
   var c = state.workout;
   if(!c.sections){
     c.sections = [{ type:c.type, params:c.params, counterEnabled:c.counterEnabled, stopwatchEnabled:c.stopwatchEnabled }];
@@ -1575,10 +1589,16 @@ function addSection(){
     c.type = 'multi'; c.params = {};
     delete c.counterEnabled; delete c.stopwatchEnabled;
   }
-  c.sections.push({ type:'classic', params:{} });
-  var k = c.sections.length-1;
-  c.exercises.push({ name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null, sec:k });
-  state.secFor = c; state.secIdx = k;
+  var n = c.sections.length;
+  if(pos==null || pos>n) pos = n;
+  if(pos<0) pos = 0;
+  c.exercises.forEach(function(x){ if((x.sec||0)>=pos) x.sec = (x.sec||0)+1; });
+  c.sections.splice(pos, 0, { type:'classic', params:{} });
+  var ne = { name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null, sec:pos };
+  var at = -1;
+  for(var i=0;i<c.exercises.length;i++){ if(c.exercises[i].sec>pos){ at = i; break; } }
+  if(at<0) c.exercises.push(ne); else c.exercises.splice(at, 0, ne);
+  state.secFor = c; state.secIdx = pos;
 }
 function removeSection(k){
   var c = state.workout;
@@ -1660,11 +1680,11 @@ function renderPreview(){
     var sk = secIndex();
     secBar = '<div class="overview-title">Abschnitte</div><div class="type-select-row">' +
       c.sections.map(function(sc,i){ return '<button class="type-chip'+(i===sk?' active':'')+'" data-action="secSelect" data-idx="'+i+'">'+(i+1)+' · '+esc(typeText({ type:sc.type, params:sc.params||{} }))+'</button>'; }).join('') +
-      '<button class="type-chip" data-action="secAdd">＋ Abschnitt</button></div>' +
+      '</div>' +
       '<div class="sec-hint">Die Abschnitte laufen nacheinander, jeder mit eigenem Modus. Unten bearbeitest du Abschnitt '+(sk+1)+'.</div>' +
-      '<div style="margin:-4px 0 14px;"><button class="ghost-btn" data-action="secRemove" data-idx="'+sk+'">Abschnitt '+(sk+1)+' entfernen</button></div>';
+      '<div class="sec-tools"><button class="ghost-btn" data-action="secAdd" data-pos="before">＋ Abschnitt davor</button><button class="ghost-btn" data-action="secAdd" data-pos="after">＋ Abschnitt danach</button><button class="ghost-btn" style="color:var(--danger);" data-action="secRemove" data-idx="'+sk+'">Abschnitt '+(sk+1)+' entfernen</button></div>';
   } else {
-    secBar = '<button class="ghost-btn" style="width:100%; margin-bottom:14px;" data-action="secAdd">＋ Weiteren Abschnitt mit anderem Modus hinzufügen</button>';
+    secBar = '<div class="sec-hint" style="margin-bottom:8px;">Mehrere Modi in einem Training? Füge einen Abschnitt mit eigenem Modus hinzu:</div><div class="sec-tools" style="margin-top:0;"><button class="ghost-btn" data-action="secAdd" data-pos="before">＋ Abschnitt davor</button><button class="ghost-btn" data-action="secAdd" data-pos="after">＋ Abschnitt danach</button></div>';
   }
   return '' +
   header('Vorschau','goto:note') +
@@ -3041,7 +3061,30 @@ app.addEventListener('click', function(e){
     render();
   }
   else if(action==='secSelect'){ syncPreviewFromDOM(); state.secIdx = parseInt(t.getAttribute('data-idx'),10); state.setEditFor = null; render(); window.scrollTo(0,0); }
-  else if(action==='secAdd'){ syncPreviewFromDOM(); addSection(); state.setEditFor = null; render(); window.scrollTo(0,0); }
+  else if(action==='secAdd'){
+    syncPreviewFromDOM();
+    var sk0 = secIndex(), where = t.getAttribute('data-pos');
+    addSection(where==='before' ? sk0 : sk0+1);
+    state.setEditFor = null; render(); window.scrollTo(0,0);
+  }
+  else if(action==='insertEx'){
+    syncPreviewFromDOM();
+    var iat = parseInt(t.getAttribute('data-at'),10), isec = t.getAttribute('data-sec');
+    var ic = state.workout, ine = { name:'Neue Übung', sets:1, value:null, unitType:'reps', weight:null }, igi = iat;
+    if(ic.sections && state.screen!=='editEntry'){
+      var ik = secIndex(), ishown = pview().exercises;
+      ine.sec = ik;
+      if(iat < ishown.length) igi = ic.exercises.indexOf(ishown[iat]);
+      else { igi = ic.exercises.length; ic.exercises.forEach(function(x,ix){ if((x.sec||0)===ik) igi = ix+1; }); }
+    } else if(ic.sections){
+      ine.sec = parseInt(isec,10);
+    }
+    ic.exercises.splice(igi, 0, ine);
+    state.setEditFor = null;
+    render();
+    var iinp = document.querySelector('#exList [data-idx="'+iat+'"][data-field="name"]');
+    if(iinp){ iinp.focus(); iinp.select(); }
+  }
   else if(action==='secRemove'){
     var rk = parseInt(t.getAttribute('data-idx'),10);
     if(confirm('Abschnitt '+(rk+1)+' mit allen Übungen entfernen?')){ syncPreviewFromDOM(); removeSection(rk); state.setEditFor = null; render(); window.scrollTo(0,0); }
